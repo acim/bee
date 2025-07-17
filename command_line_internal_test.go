@@ -3,6 +3,7 @@ package bee
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"net/url"
 	"reflect"
 	"regexp"
@@ -47,9 +48,10 @@ func TestParse_errors(t *testing.T) {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			a := newCommandLine("test", []CommandLineOption{WithErrorHandling(flag.ContinueOnError)})
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
 
-			if err := a.parse(tt.in, tt.flags); err != nil && err.Error() != tt.wantErr {
+			if err := cl.parse(tt.in, tt.flags); err != nil && err.Error() != tt.wantErr {
 				t.Errorf("want error %v got error %v", tt.wantErr, err.Error())
 			}
 		})
@@ -283,9 +285,12 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 
 			b := &bytes.Buffer{}
 
-			a := newCommandLine("test", []CommandLineOption{WithErrorHandling(flag.ContinueOnError), WithOutput(b)})
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			cl.output = b
+			cl.flagSet.SetOutput(b)
 
-			if err := a.parse(tt.config, []string{"-h"}); err != nil && err.Error() != tt.wantErr {
+			if err := cl.parse(tt.config, []string{"-h"}); err != nil && err.Error() != tt.wantErr {
 				t.Errorf("want error %q got error %q", tt.wantErr, err.Error())
 			}
 
@@ -357,7 +362,7 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			a := newCommandLine("test", nil)
+			a := newCommandLine("test")
 
 			err := a.parse(tt.in, []string{})
 			if err != nil {
@@ -420,9 +425,11 @@ func TestParse_environment_errors(t *testing.T) {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			a := newCommandLine("test", []CommandLineOption{WithErrorHandling(flag.ContinueOnError), WithLookupEnvFunc(tt.lookupEnvFunc)})
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			cl.lookupEnvFunc = tt.lookupEnvFunc
 
-			if err := a.parse(tt.config, []string{}); err != nil && err.Error() != tt.wantErr {
+			if err := cl.parse(tt.config, []string{}); err != nil && err.Error() != tt.wantErr {
 				t.Errorf("want error %v got error %v", tt.wantErr, err.Error())
 			}
 		})
@@ -753,9 +760,11 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			a := newCommandLine("test", []CommandLineOption{WithErrorHandling(flag.ContinueOnError), WithLookupEnvFunc(tt.lookupEnvFunc)})
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			cl.lookupEnvFunc = tt.lookupEnvFunc
 
-			if err := a.parse(tt.config, []string{}); err != nil {
+			if err := cl.parse(tt.config, []string{}); err != nil {
 				t.Error(err)
 			}
 
@@ -820,8 +829,15 @@ func TestWithUsage(t *testing.T) {
 
 	b := &bytes.Buffer{}
 
-	a := newCommandLine("me", []CommandLineOption{WithErrorHandling(flag.ContinueOnError), WithOutput(b), WithUsage("test")})
-	_ = a.parse(&struct{}{}, []string{"-h"})
+	cl := newCommandLine("me")
+	cl.errorHandling = flag.ContinueOnError
+	cl.output = b
+	cl.flagSet.Usage = func() {
+		_, _ = fmt.Fprintf(cl.output, "Usage of %s %s:\n", "test", cl.name)
+		cl.flagSet.PrintDefaults()
+	}
+
+	_ = cl.parse(&struct{}{}, []string{"-h"})
 
 	if want := "Usage of test me:\n"; want != b.String() {
 		t.Errorf("want %q got %q", want, b.String())

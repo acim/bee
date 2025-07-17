@@ -28,17 +28,13 @@ type comandLine struct {
 	help          bool
 }
 
-func newCommandLine(name string, opts []CommandLineOption) *comandLine {
+func newCommandLine(name string) *comandLine {
 	a := &comandLine{ //nolint:exhaustruct
 		flagSet:       flag.NewFlagSet(name, flag.ContinueOnError),
 		output:        os.Stderr,
 		lookupEnvFunc: os.LookupEnv,
 		name:          name,
 		errorHandling: flag.ExitOnError,
-	}
-
-	for _, opt := range opts {
-		opt(a)
 	}
 
 	a.flagSet.SetOutput(a.output)
@@ -431,38 +427,4 @@ func (cl *comandLine) exit(err error) error {
 	}
 
 	return nil
-}
-
-// CommandLineOption defines optional parameters to the constructor.
-type CommandLineOption func(a *comandLine)
-
-// WithErrorHandling is an option to change error handling similar to flag package.
-func WithErrorHandling(errorHandling flag.ErrorHandling) CommandLineOption {
-	return func(a *comandLine) {
-		a.errorHandling = errorHandling
-	}
-}
-
-// WithOutput is an option to change the output writer similar as flag.SetOutput does.
-func WithOutput(w io.Writer) CommandLineOption {
-	return func(a *comandLine) {
-		a.output = w
-	}
-}
-
-// WithLookupEnvFunc may be used to override default os.LookupEnv function to read environment variables values.
-func WithLookupEnvFunc(fn func(string) (string, bool)) CommandLineOption {
-	return func(a *comandLine) {
-		a.lookupEnvFunc = fn
-	}
-}
-
-// WithUsage allows to prefix your command name with a parent command name.
-func WithUsage(parentCmdName string) CommandLineOption {
-	return func(a *comandLine) {
-		a.flagSet.Usage = func() {
-			_, _ = fmt.Fprintf(a.output, "Usage of %s %s:\n", parentCmdName, a.name)
-			a.flagSet.PrintDefaults()
-		}
-	}
 }
