@@ -2,10 +2,10 @@
 
 Microservices oriented [12-factor](https://12factor.net) Go library for parsing environment variables and command line flags to arbitrary config struct using struct tags to define default values and to override flag names and environment variables' names.
 
-[![Build Status](https://github.com/acim/bee/workflows/build/badge.svg)](https://github.com/acim/bee/actions)
-![Go Coverage](https://img.shields.io/badge/coverage-88.8%25-brightgreen?style=flat&logo=go)
-[![Go Reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
-[![Go Report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
+[![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
+![coverage](https://img.shields.io/badge/coverage-88.8%25-brightgreen?style=flat&logo=go)
+[![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
+[![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
