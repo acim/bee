@@ -3,7 +3,7 @@
 Microservices oriented [12-factor](https://12factor.net) Go library for parsing environment variables and command line flags to arbitrary config struct using struct tags to define default values and to override flag names and environment variables' names.
 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
-![coverage](https://img.shields.io/badge/coverage-88.8%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-82.2%25-brightgreen?style=flat&logo=go)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
 
