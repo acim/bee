@@ -160,3 +160,8 @@ type c struct {
 	name  string
 	inner func(ctx context.Context) error
 }
+
+// Ref returns a reference to a given value.
+func Ref[T any](v T) *T {
+	return &v
+}
