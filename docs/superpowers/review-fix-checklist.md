@@ -32,8 +32,8 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `command_line_internal_test.go`: several error assertions do not fail when `err == nil` and `wantErr` is set.
   - Locations noted during review: around lines 54, 293, and 432.
 
-- [ ] `.github/workflows/pipeline.yml` and `.github/workflows/update-deps.yaml`: reusable workflows are pinned to mutable `@main`.
-  - Suggested fix: pin to a version tag or commit SHA.
+- [x] `.github/workflows/pipeline.yml` and `.github/workflows/update-deps.yaml`: reusable workflows are pinned to mutable `@main`.
+  - Resolution: accepted as fine for this repository; leave the reusable workflow refs on `@main`.
 
 - [ ] `.github/workflows/pipeline.yml`: CI runs `make test` but not `make lint`.
   - Current local result: `make lint` fails on a govet inline finding and stale `gomnd` nolint directives.
