@@ -12,6 +12,26 @@ import (
 	"time"
 )
 
+func assertError(t *testing.T, err error, want string) {
+	t.Helper()
+
+	if want == "" {
+		if err != nil {
+			t.Fatalf("want no error, got %v", err)
+		}
+
+		return
+	}
+
+	if err == nil {
+		t.Fatalf("want error %q, got nil", want)
+	}
+
+	if err.Error() != want {
+		t.Fatalf("want error %q, got %q", want, err.Error())
+	}
+}
+
 func TestParse_errors(t *testing.T) {
 	t.Parallel()
 
@@ -63,9 +83,8 @@ func TestParse_errors(t *testing.T) {
 			cl := newCommandLine("test")
 			cl.errorHandling = flag.ContinueOnError
 
-			if err := cl.parse(tt.in, tt.flags); err != nil && err.Error() != tt.wantErr {
-				t.Errorf("want error %v got error %v", tt.wantErr, err.Error())
-			}
+			err := cl.parse(tt.in, tt.flags)
+			assertError(t, err, tt.wantErr)
 		})
 	}
 }
@@ -109,14 +128,7 @@ func TestParse_duplicateFlagReturnsError(t *testing.T) {
 		Second string `flag:"same"`
 	}{}, []string{})
 
-	if err == nil {
-		t.Fatal("want error for duplicate flag, got nil")
-	}
-
-	want := `Second def: duplicate flag "same": invalid config type`
-	if err.Error() != want {
-		t.Fatalf("want error %q, got %q", want, err.Error())
-	}
+	assertError(t, err, `Second def: duplicate flag "same": invalid config type`)
 }
 
 func TestParse_usage(t *testing.T) { //nolint:funlen
@@ -351,8 +363,10 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 			cl.output = b
 			cl.flagSet.SetOutput(b)
 
-			if err := cl.parse(tt.config, []string{"-h"}); err != nil && err.Error() != tt.wantErr {
-				t.Errorf("want error %q got error %q", tt.wantErr, err.Error())
+			err := cl.parse(tt.config, []string{"-h"})
+			assertError(t, err, tt.wantErr)
+			if tt.wantErr != "" {
+				return
 			}
 
 			got := strings.TrimSpace(ws.ReplaceAllString(b.String(), " "))
@@ -490,9 +504,8 @@ func TestParse_environment_errors(t *testing.T) {
 			cl.errorHandling = flag.ContinueOnError
 			cl.lookupEnvFunc = tt.lookupEnvFunc
 
-			if err := cl.parse(tt.config, []string{}); err != nil && err.Error() != tt.wantErr {
-				t.Errorf("want error %v got error %v", tt.wantErr, err.Error())
-			}
+			err := cl.parse(tt.config, []string{})
+			assertError(t, err, tt.wantErr)
 		})
 	}
 }

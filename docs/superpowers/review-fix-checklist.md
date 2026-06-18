@@ -29,7 +29,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `command_line.go`: duplicate generated or tagged flag names can panic during registration.
   - Suggested fix: track registered flag names or convert duplicate registration into a returned config error.
 
-- [ ] `command_line_internal_test.go`: several error assertions do not fail when `err == nil` and `wantErr` is set.
+- [x] `command_line_internal_test.go`: several error assertions do not fail when `err == nil` and `wantErr` is set.
   - Locations noted during review: around lines 54, 293, and 432.
 
 - [ ] `.github/workflows/pipeline.yml` and `.github/workflows/update-deps.yaml`: reusable workflows are pinned to mutable `@main`.
