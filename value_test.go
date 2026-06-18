@@ -212,6 +212,28 @@ func TestURL(t *testing.T) { //nolint:funlen
 	}
 }
 
+func TestURLGetZeroValue(t *testing.T) {
+	t.Parallel()
+
+	f := &bee.URL{} //nolint:exhaustruct
+
+	gotGet := f.Get()
+	if !reflect.DeepEqual(gotGet, url.URL{}) {
+		t.Errorf("want empty url, got %v", gotGet)
+	}
+}
+
+func TestURLGetNil(t *testing.T) {
+	t.Parallel()
+
+	var f *bee.URL
+
+	gotGet := f.Get()
+	if !reflect.DeepEqual(gotGet, url.URL{}) {
+		t.Errorf("want empty url, got %v", gotGet)
+	}
+}
+
 func TestTime(t *testing.T) { //nolint:funlen
 	t.Parallel()
 
@@ -290,6 +312,28 @@ func TestTime(t *testing.T) { //nolint:funlen
 				t.Errorf("want %v got %v", tt.wantGet, gotGet)
 			}
 		})
+	}
+}
+
+func TestTimeGetZeroValue(t *testing.T) {
+	t.Parallel()
+
+	f := &bee.Time{} //nolint:exhaustruct
+
+	gotGet := f.Get()
+	if !reflect.DeepEqual(gotGet, time.Time{}) {
+		t.Errorf("want zero time, got %v", gotGet)
+	}
+}
+
+func TestTimeGetNil(t *testing.T) {
+	t.Parallel()
+
+	var f *bee.Time
+
+	gotGet := f.Get()
+	if !reflect.DeepEqual(gotGet, time.Time{}) {
+		t.Errorf("want zero time, got %v", gotGet)
 	}
 }
 

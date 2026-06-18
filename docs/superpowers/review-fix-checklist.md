@@ -9,7 +9,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `command_line.go`: unexported config fields can panic at `Addr().Interface()` instead of returning a clear invalid-config error.
   - Suggested fix: check `field.PkgPath`, `CanAddr`, or `CanInterface` before taking the interface.
 
-- [ ] `value.go`: `URL.Get()` and `Time.Get()` dereference nil embedded pointers for zero/default values.
+- [x] `value.go`: `URL.Get()` and `Time.Get()` dereference nil embedded pointers for zero/default values.
   - Suggested fix: return `url.URL{}` / `time.Time{}` for nil receivers or nil embedded pointers.
 
 - [ ] `README.md`: subcommand example does not compile.
@@ -41,7 +41,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [ ] `.github/dependabot.yml`: Dependabot covers GitHub Actions only, not Go modules.
   - Suggested fix: add a `gomod` ecosystem entry for `/`.
 
-- [ ] `README.md`: coverage badge says `82.2%`, but current coverage is `77.9%`.
+- [x] `README.md`: coverage badge says `82.2%`, but current coverage is `77.9%`.
   - Suggested fix: update the badge or generate it automatically from CI.
 
 ## P3

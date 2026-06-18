@@ -117,6 +117,10 @@ func (f *URL) String() string {
 
 // Get returns flag's value.
 func (f *URL) Get() interface{} {
+	if f == nil || f.URL == nil {
+		return url.URL{}
+	}
+
 	return *f.URL
 }
 
@@ -148,5 +152,9 @@ func (f *Time) String() string {
 
 // Get returns flag's value.
 func (f *Time) Get() interface{} {
+	if f == nil || f.Time == nil {
+		return time.Time{}
+	}
+
 	return *f.Time
 }
