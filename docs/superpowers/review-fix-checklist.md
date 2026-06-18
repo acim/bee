@@ -46,7 +46,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 
 ## P3
 
-- [ ] `example_test.go`: examples are commented out while the README links to them.
+- [x] `example_test.go`: examples are commented out while the README links to them.
   - Suggested fix: restore compile-checked examples or remove the examples claim.
 
 - [ ] `value.go`: `Time.Set` comment says it parses a provided URL, but it parses RFC3339 time.
@@ -55,6 +55,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 
 - [ ] Consider enabling GitHub CodeQL/code scanning for this Go repository.
 
-- [ ] Consider adding `govulncheck ./...` to CI. `govulncheck` was not installed locally during the review.
+- [x] Consider adding `govulncheck ./...` to CI.
+  - Resolution: no workflow change needed; `ectobit/reusable-workflows/.github/workflows/go-check.yaml` already installs `govulncheck` and runs `govulncheck ./...` in the lint step.
 
 - [ ] No Dockerfile was present during the review, so the container image vulnerability scanning reminder did not apply at that time.

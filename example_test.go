@@ -1,63 +1,87 @@
 package bee_test
 
-// import (
-// 	"flag"
-// 	"time"
+import (
+	"flag"
+	"io"
+	"os"
+	"time"
 
-// 	"go.acim.net/bee"
-// )
+	"go.acim.net/bee"
+)
 
-// func Example_basic() {
-// 	type config struct {
-// 		Host string
-// 		Port int
-// 		DB   struct {
-// 			Kind     string
-// 			Postgres struct {
-// 				Host string
-// 			}
-// 			Mongo struct {
-// 				Host bee.StringSlice
-// 			}
-// 		}
-// 		Start bee.Time
-// 	}
+func Example_basic() {
+	type config struct {
+		Host string
+		Port int
+		DB   struct {
+			Kind     string
+			Postgres struct {
+				Host string
+			}
+			Mongo struct {
+				Host bee.StringSlice
+			}
+		}
+		Start bee.Time
+	}
 
-// 	cfg := &config{} //nolint:exhaustruct
+	cfg := &config{} //nolint:exhaustruct
 
-// 	_ = bee.NewService("mycmd", cfg, bee.WithErrorHandling(flag.ContinueOnError))
+	args := os.Args
+	defer func() {
+		os.Args = args
+	}()
+	os.Args = []string{"mycmd"}
 
-// 	// Output:
-// }
+	_ = bee.NewService(
+		"mycmd",
+		cfg,
+		bee.WithErrorHandling(flag.ContinueOnError),
+		bee.WithOutput(io.Discard),
+	)
 
-// func Example_advanced() {
-// 	type config struct {
-// 		Env   string `help:"environment [development|production]" def:"development"`
-// 		Port  uint   `def:"3000"`
-// 		Mongo struct {
-// 			Hosts             bee.StringSlice `def:"mongo"`
-// 			ConnectionTimeout time.Duration   `def:"10s"`
-// 			ReplicaSet        string
-// 			MaxPoolSize       uint64 `def:"100"`
-// 			TLS               bool
-// 			Username          string
-// 			Password          string
-// 			Database          string `def:"cool"`
-// 		}
-// 		JWT struct {
-// 			Secret                 string
-// 			TokenExpiration        time.Duration `def:"24h"`
-// 			RefreshTokenExpiration time.Duration `def:"168h"`
-// 		}
-// 		AWS struct {
-// 			Region string `def:"eu-central-1"`
-// 		}
-// 		Start bee.Time `def:"2002-10-02T10:00:00-05:00"`
-// 	}
+	// Output:
+}
 
-// 	cfg := &config{} //nolint:exhaustruct
+func Example_advanced() {
+	type config struct {
+		Env   string `help:"environment [development|production]" def:"development"`
+		Port  uint   `def:"3000"`
+		Mongo struct {
+			Hosts             bee.StringSlice `def:"mongo"`
+			ConnectionTimeout time.Duration   `def:"10s"`
+			ReplicaSet        string
+			MaxPoolSize       uint64 `def:"100"`
+			TLS               bool
+			Username          string
+			Password          string `env:"MONGO_PASSWORD"`
+			Database          string `def:"cool"`
+		}
+		JWT struct {
+			Secret                 string        `env:"JWT_SECRET"`
+			TokenExpiration        time.Duration `def:"24h"`
+			RefreshTokenExpiration time.Duration `def:"168h"`
+		}
+		AWS struct {
+			Region string `def:"eu-central-1"`
+		}
+		Start bee.Time `def:"2002-10-02T10:00:00-05:00"`
+	}
 
-// 	_ = bee.NewService("cool", cfg, bee.WithErrorHandling(flag.ContinueOnError))
+	cfg := &config{} //nolint:exhaustruct
 
-// 	// Output:
-// }
+	args := os.Args
+	defer func() {
+		os.Args = args
+	}()
+	os.Args = []string{"cool"}
+
+	_ = bee.NewService(
+		"cool",
+		cfg,
+		bee.WithErrorHandling(flag.ContinueOnError),
+		bee.WithOutput(io.Discard),
+	)
+
+	// Output:
+}
