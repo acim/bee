@@ -22,6 +22,10 @@ func TestMakefileTestEnforcesCoverageThreshold(t *testing.T) {
 		t.Fatal("Makefile must define the 95% coverage threshold")
 	}
 
+	if !strings.Contains(makefile, `threshold="$(COVERAGE_THRESHOLD)"`) {
+		t.Fatal("make test must use the Makefile coverage threshold")
+	}
+
 	if !strings.Contains(makefile, "go test -race -coverprofile=coverage.out ./...") {
 		t.Fatal("make test must run the race detector and collect coverage")
 	}

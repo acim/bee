@@ -11,7 +11,7 @@ test:
 	echo "$$report"; \
 	coverage=$$(printf "%s\n" "$$report" | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}'); \
 	badge=$$(awk -F'coverage-|%25' '/img.shields.io\/badge\/coverage-/ {print $$2; exit}' README.md); \
-	threshold=$${COVERAGE_THRESHOLD:-90}; \
+	threshold="$(COVERAGE_THRESHOLD)"; \
 	if [ -z "$$coverage" ]; then echo "coverage total not found" && exit 1; fi; \
 	if [ -z "$$badge" ]; then echo "README coverage badge not found" && exit 1; fi; \
 	if [ "$$coverage" != "$$badge" ]; then \
