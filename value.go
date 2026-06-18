@@ -129,7 +129,7 @@ type Time struct {
 	*time.Time
 }
 
-// Set sets flag's value by parsing provided url.
+// Set sets flag's value by parsing provided RFC3339 time.
 func (f *Time) Set(s string) error {
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {

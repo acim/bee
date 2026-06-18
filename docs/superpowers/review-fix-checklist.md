@@ -49,7 +49,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `example_test.go`: examples are commented out while the README links to them.
   - Suggested fix: restore compile-checked examples or remove the examples claim.
 
-- [ ] `value.go`: `Time.Set` comment says it parses a provided URL, but it parses RFC3339 time.
+- [x] `value.go`: `Time.Set` comment says it parses a provided URL, but it parses RFC3339 time.
 
 ## Repository Reminders
 
