@@ -28,4 +28,4 @@ jobs:
           go test -coverprofile=coverage.out ./...
           coverage="$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')"
           echo "Coverage: ${coverage}%"
-          awk -v coverage="$coverage" 'BEGIN { exit coverage >= 80.0 ? 0 : 1 }'
+          awk -v coverage="$coverage" 'BEGIN { exit coverage >= 90.0 ? 0 : 1 }'

@@ -2,8 +2,13 @@ package bee
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"flag"
+	"io"
 	"log/slog"
+	"os"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -59,6 +64,79 @@ func TestWithLogLevelDefaultsToDebug(t *testing.T) {
 
 	if s.logLevel.Level() != slog.LevelDebug {
 		t.Fatalf("want debug log level, got %s", s.logLevel.Level())
+	}
+}
+
+func TestWithLogLevel(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		in   string
+		want slog.Level
+	}{
+		"info": {
+			in:   "info",
+			want: slog.LevelInfo,
+		},
+		"error": {
+			in:   "ERROR",
+			want: slog.LevelError,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := &Service{} //nolint:exhaustruct
+			WithLogLevel(tt.in)(s)
+
+			if s.logLevel.Level() != tt.want {
+				t.Fatalf("want %s log level, got %s", tt.want, s.logLevel.Level())
+			}
+		})
+	}
+}
+
+func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
+	t.Parallel()
+
+	stop := make(chan os.Signal, 1)
+	s := &Service{ //nolint:exhaustruct
+		stop:    stop,
+		timeout: 100 * time.Millisecond,
+		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	var calls []string
+	s.Register("first", func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("first closer got expired context: %v", err)
+		}
+
+		calls = append(calls, "first")
+
+		return nil
+	})
+	s.Register("second", func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("second closer got expired context: %v", err)
+		}
+
+		calls = append(calls, "second")
+
+		return errors.New("close second")
+	})
+
+	stop <- os.Interrupt
+	s.Run()
+
+	want := []string{"second", "first"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("want closer calls %v, got %v", want, calls)
 	}
 }
 

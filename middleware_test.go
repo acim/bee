@@ -1,6 +1,9 @@
 package bee
 
 import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -58,5 +61,53 @@ func TestMiddlewaresWrapEmpty(t *testing.T) {
 	var middlewares Middlewares
 	if got := middlewares.Wrap(mux); got != mux {
 		t.Fatalf("want original mux, got %T", got)
+	}
+}
+
+func TestSlogLogger(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	handler := SlogLogger(log)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("created"))
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/things?id=42", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want status %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	if got, want := rec.Body.String(), "created"; got != want {
+		t.Fatalf("want body %q, got %q", want, got)
+	}
+
+	var entry map[string]interface{}
+	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		t.Fatalf("decode log entry: %v", err)
+	}
+
+	assertLogValue(t, entry, "msg", "request completed")
+	assertLogValue(t, entry, "method", http.MethodPost)
+	assertLogValue(t, entry, "uri", "/things?id=42")
+	assertLogValue(t, entry, "status", float64(http.StatusCreated))
+	assertLogValue(t, entry, "bytes", float64(len("created")))
+
+	if _, ok := entry["duration"]; !ok {
+		t.Fatal("want duration in log entry")
+	}
+}
+
+func assertLogValue(t *testing.T, entry map[string]interface{}, key string, want interface{}) {
+	t.Helper()
+
+	if got := entry[key]; got != want {
+		t.Fatalf("want log %s=%v, got %v", key, want, got)
 	}
 }
