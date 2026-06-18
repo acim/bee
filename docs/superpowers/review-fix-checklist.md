@@ -35,10 +35,10 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `.github/workflows/pipeline.yml` and `.github/workflows/update-deps.yaml`: reusable workflows are pinned to mutable `@main`.
   - Resolution: accepted as fine for this repository; leave the reusable workflow refs on `@main`.
 
-- [ ] `.github/workflows/pipeline.yml`: CI runs `make test` but not `make lint`.
-  - Current local result: `make lint` fails on a govet inline finding and stale `gomnd` nolint directives.
+- [x] `.github/workflows/pipeline.yml`: CI runs `make test` but not `make lint`.
+  - Resolution: no workflow change needed; `ectobit/reusable-workflows/.github/workflows/go-check.yaml` already runs `golangci-lint run`, which is the same command as `make lint`, and also runs `govulncheck ./...`.
 
-- [ ] `.github/dependabot.yml`: Dependabot covers GitHub Actions only, not Go modules.
+- [x] `.github/dependabot.yml`: Dependabot covers GitHub Actions only, not Go modules.
   - Suggested fix: add a `gomod` ecosystem entry for `/`.
 
 - [x] `README.md`: coverage badge says `82.2%`, but current coverage is `77.9%`.
