@@ -101,6 +101,10 @@ func (cl *comandLine) subParse(config interface{}, flags []string, prefix string
 
 		envVarValue, ok := cl.lookupEnvFunc(envVarName)
 		if ok && !cl.help {
+			if err := cl.validateFlagName(flagName); err != nil {
+				return fmt.Errorf("%s env: %w", field.Name, err)
+			}
+
 			if err := cl.parseValue(field.Type.Kind(), p, flagName, envVarValue, usage); err != nil {
 				return fmt.Errorf("%s env: %w", field.Name, err)
 			}
@@ -108,9 +112,21 @@ func (cl *comandLine) subParse(config interface{}, flags []string, prefix string
 			continue
 		}
 
+		if err := cl.validateFlagName(flagName); err != nil {
+			return fmt.Errorf("%s def: %w", field.Name, err)
+		}
+
 		if err := cl.parseValue(field.Type.Kind(), p, flagName, field.Tag.Get("def"), usage); err != nil {
 			return fmt.Errorf("%s def: %w", field.Name, err)
 		}
+	}
+
+	return nil
+}
+
+func (cl *comandLine) validateFlagName(flagName string) error {
+	if cl.flagSet.Lookup(flagName) != nil {
+		return fmt.Errorf("duplicate flag %q: %w", flagName, ErrInvalidConfigType)
 	}
 
 	return nil

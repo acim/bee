@@ -92,6 +92,33 @@ func TestParse_unexportedFieldReturnsError(t *testing.T) {
 	}
 }
 
+func TestParse_duplicateFlagReturnsError(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("parse panicked for duplicate flag: %v", r)
+		}
+	}()
+
+	err := cl.parse(&struct {
+		First  string `flag:"same"`
+		Second string `flag:"same"`
+	}{}, []string{})
+
+	if err == nil {
+		t.Fatal("want error for duplicate flag, got nil")
+	}
+
+	want := `Second def: duplicate flag "same": invalid config type`
+	if err.Error() != want {
+		t.Fatalf("want error %q, got %q", want, err.Error())
+	}
+}
+
 func TestParse_usage(t *testing.T) { //nolint:funlen
 	t.Parallel()
 

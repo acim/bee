@@ -26,7 +26,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `service.go`: `WithOutput` updates `commandLine.output` but not `flagSet.SetOutput(w)`.
   - Suggested fix: update both outputs and add coverage for redirected flag usage/diagnostics.
 
-- [ ] `command_line.go`: duplicate generated or tagged flag names can panic during registration.
+- [x] `command_line.go`: duplicate generated or tagged flag names can panic during registration.
   - Suggested fix: track registered flag names or convert duplicate registration into a returned config error.
 
 - [ ] `command_line_internal_test.go`: several error assertions do not fail when `err == nil` and `wantErr` is set.
