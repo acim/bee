@@ -55,7 +55,11 @@ func (cl *comandLine) subParse(config interface{}, flags []string, prefix string
 
 	v := reflect.ValueOf(config)
 
-	if !v.IsValid() || v.Kind() != reflect.Ptr || v.IsNil() {
+	if !v.IsValid() {
+		return ErrInvalidConfigType
+	}
+
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return ErrInvalidConfigType
 	}
 
