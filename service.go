@@ -19,6 +19,8 @@ const (
 	exitCode                   = 2
 )
 
+var osExit = os.Exit
+
 // Service is an microservice abstraction providing graceful shutdown.
 type Service struct {
 	name        string
@@ -149,7 +151,7 @@ func Exit(m string, err error) {
 		_, _ = fmt.Fprintf(os.Stderr, "%s: %s\n", m, err)
 	}
 
-	os.Exit(exitCode)
+	osExit(exitCode)
 }
 
 // SlogError create slog string attribute to handle error logs.

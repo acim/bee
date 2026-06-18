@@ -2,6 +2,7 @@ package bee
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"net/url"
@@ -129,6 +130,54 @@ func TestParse_duplicateFlagReturnsError(t *testing.T) {
 	}{}, []string{})
 
 	assertError(t, err, `Second def: duplicate flag "same": invalid config type`)
+}
+
+func TestExitOnErrorWritesErrorAndExits(t *testing.T) {
+	var output bytes.Buffer
+	cl := newCommandLine("test")
+	cl.output = &output
+	cl.errorHandling = flag.ExitOnError
+
+	gotCode := captureExit(t, func() {
+		_ = cl.exit(errors.New("bad flag"))
+	})
+
+	if gotCode != exitCode {
+		t.Fatalf("want exit code %d, got %d", exitCode, gotCode)
+	}
+
+	if got, want := output.String(), "bee: bad flag\n"; got != want {
+		t.Fatalf("want output %q, got %q", want, got)
+	}
+}
+
+func TestExitOnErrorHelpExitsSuccessfully(t *testing.T) {
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ExitOnError
+	cl.help = true
+
+	gotCode := captureExit(t, func() {
+		_ = cl.exit(flag.ErrHelp)
+	})
+
+	if gotCode != 0 {
+		t.Fatalf("want exit code 0, got %d", gotCode)
+	}
+}
+
+func TestPanicOnErrorPanics(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.PanicOnError
+
+	defer func() {
+		if got := recover(); got != flag.ErrHelp {
+			t.Fatalf("want panic %v, got %v", flag.ErrHelp, got)
+		}
+	}()
+
+	_ = cl.exit(flag.ErrHelp)
 }
 
 func TestParse_usage(t *testing.T) { //nolint:funlen

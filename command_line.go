@@ -447,11 +447,11 @@ func (cl *comandLine) exit(err error) error {
 		return err
 	case flag.ExitOnError:
 		if cl.help || errors.Is(err, flag.ErrHelp) {
-			os.Exit(0)
+			osExit(0)
 		}
 
 		_, _ = fmt.Fprintf(cl.output, "bee: %v\n", err)
-		os.Exit(2) //nolint:gomnd
+		osExit(2) //nolint:gomnd
 	case flag.PanicOnError:
 		panic(err)
 	}
