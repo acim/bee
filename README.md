@@ -3,7 +3,7 @@
 Microservices oriented [12-factor](https://12factor.net) Go library for parsing environment variables and command line flags to arbitrary config struct using struct tags to define default values and to override flag names and environment variables' names.
 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
-![coverage](https://img.shields.io/badge/coverage-87.2%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-87.0%25-brightgreen?style=flat&logo=go)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
 
@@ -41,43 +41,46 @@ Besides the types supported by flag package, this package provides additional ty
 
 Run `make test-verbose` to see examples output.
 
-## Subcommands
-
-These are handled just like by standard library's flag package.
+## Service setup
 
 ```go
 package main
 
 import (
-	"log"
-	"os"
+	"net/http"
 
 	"go.acim.net/bee"
 )
 
+type config struct {
+	Port     string `def:":8080"`
+	LogLevel string `def:"DEBUG"`
+}
+
 func main() {
-	subCmd := os.Args[1]
-	switch subCmd {
-	case "create":
-		config := &struct{}{}
-		createCmd := bee.NewCommandLine("create")
+	cfg := config{}
+	svc := bee.NewService("myCoolApp", &cfg, bee.WithLogLevel(cfg.LogLevel))
 
-		if err := createCmd.Parse(config, os.Args[2:]); err != nil {
-			log.Println(err)
-		}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 
-		// Implementation
-
-	case "delete":
-		config := &struct{}{}
-		deleteCmd := ms.New("create")
-
-		if err := deleteCmd.Parse(config, os.Args[2:]); err != nil {
-			log.Println(err)
-		}
-
-		// Implementation
+	server := &http.Server{
+		Addr:    cfg.Port,
+		Handler: mux,
 	}
+
+	svc.Register("http server", server.Shutdown)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			bee.Exit("failed to run HTTP server", err)
+		}
+	}()
+
+	svc.Log.Info("starting myCoolApp", "port", cfg.Port)
+	svc.Run()
 }
 ```
 

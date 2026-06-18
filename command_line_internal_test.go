@@ -25,6 +25,18 @@ func TestParse_errors(t *testing.T) {
 			flags:   []string{""},
 			wantErr: "invalid config type",
 		},
+		"config-nil": {
+			in:      nil,
+			flags:   []string{""},
+			wantErr: "invalid config type",
+		},
+		"config-typed-nil": {
+			in: (*struct {
+				Port int
+			})(nil),
+			flags:   []string{""},
+			wantErr: "invalid config type",
+		},
 		"unsupported-field-type": {
 			in: &struct {
 				Port int16

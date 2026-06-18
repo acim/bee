@@ -54,9 +54,14 @@ func (cl *comandLine) subParse(config interface{}, flags []string, prefix string
 	cl.parseHelp(flags)
 
 	v := reflect.ValueOf(config)
-	t := reflect.TypeOf(config)
 
-	if v.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Struct {
+	if !v.IsValid() || v.Kind() != reflect.Ptr || v.IsNil() {
+		return ErrInvalidConfigType
+	}
+
+	t := v.Type()
+
+	if t.Elem().Kind() != reflect.Struct {
 		return ErrInvalidConfigType
 	}
 

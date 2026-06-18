@@ -12,15 +12,15 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `value.go`: `URL.Get()` and `Time.Get()` dereference nil embedded pointers for zero/default values.
   - Suggested fix: return `url.URL{}` / `time.Time{}` for nil receivers or nil embedded pointers.
 
-- [ ] `README.md`: subcommand example does not compile.
+- [x] `README.md`: subcommand example does not compile.
   - Problems: `bee.NewCommandLine` is not exported, `ms.New` is undefined, and the delete example uses the wrong command name.
 
-- [ ] `.github/workflows/pipeline.yml`: missing blocking `actionlint` CI job.
-  - Suggested fix: add an early job using `raven-actions/actionlint@v2`.
+- [x] `.github/workflows/pipeline.yml`: missing blocking `actionlint` CI job.
+  - Decision: do not add a CI job for now because the pipeline is small; validate workflow changes locally with `actionlint`.
 
 ## P2
 
-- [ ] `command_line.go`: typed nil config pointers can panic after passing the pointer-to-struct check.
+- [x] `command_line.go`: typed nil config pointers can panic after passing the pointer-to-struct check.
   - Suggested fix: check `v.IsNil()` before `v.Elem()` and return `ErrInvalidConfigType`.
 
 - [ ] `service.go`: `WithOutput` updates `commandLine.output` but not `flagSet.SetOutput(w)`.
