@@ -58,6 +58,28 @@ func TestParse_errors(t *testing.T) {
 	}
 }
 
+func TestParse_unexportedFieldReturnsError(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("parse panicked for unexported field: %v", r)
+		}
+	}()
+
+	err := cl.parse(&struct {
+		Public  string
+		private string
+	}{}, []string{})
+
+	if err == nil {
+		t.Fatal("want error for unexported field, got nil")
+	}
+}
+
 func TestParse_usage(t *testing.T) { //nolint:funlen
 	t.Parallel()
 

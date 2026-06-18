@@ -6,7 +6,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 
 ## P1
 
-- [ ] `command_line.go`: unexported config fields can panic at `Addr().Interface()` instead of returning a clear invalid-config error.
+- [x] `command_line.go`: unexported config fields can panic at `Addr().Interface()` instead of returning a clear invalid-config error.
   - Suggested fix: check `field.PkgPath`, `CanAddr`, or `CanInterface` before taking the interface.
 
 - [ ] `value.go`: `URL.Get()` and `Time.Get()` dereference nil embedded pointers for zero/default values.

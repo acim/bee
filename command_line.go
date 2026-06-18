@@ -71,7 +71,12 @@ func (cl *comandLine) subParse(config interface{}, flags []string, prefix string
 
 		usage := cl.usage(field, envVarName, prefix)
 
-		p := v.FieldByName(field.Name).Addr().Interface()
+		fieldValue := v.Field(i)
+		if field.PkgPath != "" || !fieldValue.CanAddr() || !fieldValue.Addr().CanInterface() {
+			return ErrInvalidConfigType
+		}
+
+		p := fieldValue.Addr().Interface()
 
 		// Recurse if got struct which is not of URL type
 		_, oku := p.(*URL)
