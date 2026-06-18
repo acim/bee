@@ -23,7 +23,7 @@ Use this as the fix tracker for the review findings. Mark each item complete onl
 - [x] `command_line.go`: typed nil config pointers can panic after passing the pointer-to-struct check.
   - Suggested fix: check `v.IsNil()` before `v.Elem()` and return `ErrInvalidConfigType`.
 
-- [ ] `service.go`: `WithOutput` updates `commandLine.output` but not `flagSet.SetOutput(w)`.
+- [x] `service.go`: `WithOutput` updates `commandLine.output` but not `flagSet.SetOutput(w)`.
   - Suggested fix: update both outputs and add coverage for redirected flag usage/diagnostics.
 
 - [ ] `command_line.go`: duplicate generated or tagged flag names can panic during registration.

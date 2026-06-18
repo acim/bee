@@ -119,6 +119,7 @@ func WithErrorHandling(errorHandling flag.ErrorHandling) Option {
 func WithOutput(w io.Writer) Option {
 	return func(s *Service) {
 		s.commandLine.output = w
+		s.commandLine.flagSet.SetOutput(w)
 	}
 }
 

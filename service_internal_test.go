@@ -36,6 +36,10 @@ func TestServiceOptions(t *testing.T) {
 		t.Fatalf("want ContinueOnError, got %v", s.commandLine.errorHandling)
 	}
 
+	if got := s.commandLine.flagSet.Output(); got != &output {
+		t.Fatalf("want flag set output to be overridden, got %v", got)
+	}
+
 	value, ok := s.commandLine.lookupEnvFunc("ANY")
 	if !ok || value != "value" {
 		t.Fatalf("want lookup env override, got %q %t", value, ok)
