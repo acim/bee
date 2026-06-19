@@ -43,8 +43,6 @@ func TestStringSlice(t *testing.T) {
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -110,8 +108,6 @@ func TestIntSlice(t *testing.T) { //nolint:funlen
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -182,8 +178,6 @@ func TestURL(t *testing.T) { //nolint:funlen
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -285,8 +279,6 @@ func TestTime(t *testing.T) { //nolint:funlen
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()

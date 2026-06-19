@@ -88,7 +88,7 @@ func TestSlogLogger(t *testing.T) {
 		t.Fatalf("want body %q, got %q", want, got)
 	}
 
-	var entry map[string]interface{}
+	var entry map[string]any
 	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
 		t.Fatalf("decode log entry: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestSlogLogger(t *testing.T) {
 	}
 }
 
-func assertLogValue(t *testing.T, entry map[string]interface{}, key string, want interface{}) {
+func assertLogValue(t *testing.T, entry map[string]any, key string, want any) {
 	t.Helper()
 
 	if got := entry[key]; got != want {

@@ -33,7 +33,7 @@ type Service struct {
 }
 
 // NewService creates microservice.
-func NewService(name string, config interface{}, opts ...Option) *Service {
+func NewService(name string, config any, opts ...Option) *Service {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 

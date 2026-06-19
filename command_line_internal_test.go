@@ -37,7 +37,7 @@ func TestParse_errors(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		in      interface{}
+		in      any
 		flags   []string
 		wantErr string
 	}{
@@ -75,8 +75,6 @@ func TestParse_errors(t *testing.T) {
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -186,7 +184,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 	ws := regexp.MustCompile(`\s+`)
 
 	tests := map[string]struct {
-		config  interface{}
+		config  any
 		want    string
 		wantErr string
 	}{
@@ -399,8 +397,6 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -431,7 +427,7 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 	t.Parallel()
 
 	tests := map[string]struct {
-		in interface{}
+		in any
 	}{
 		"empty-config": {
 			in: &struct{}{},
@@ -480,8 +476,6 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -500,7 +494,7 @@ func TestParse_environment_errors(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config        interface{}
+		config        any
 		lookupEnvFunc func(string) (string, bool)
 		wantErr       string
 	}{
@@ -543,8 +537,6 @@ func TestParse_environment_errors(t *testing.T) {
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -563,7 +555,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 	t.Parallel()
 
 	tests := map[string]struct {
-		config          interface{}
+		config          any
 		lookupEnvFunc   func(string) (string, bool)
 		wantString      string
 		wantBool        bool
@@ -877,8 +869,6 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 	}
 
 	for n, tt := range tests { //nolint:paralleltest
-		n := n
-		tt := tt
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()

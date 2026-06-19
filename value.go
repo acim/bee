@@ -36,7 +36,7 @@ func (f *StringSlice) String() string {
 }
 
 // Get returns flag's value.
-func (f *StringSlice) Get() interface{} {
+func (f *StringSlice) Get() any {
 	return []string(*f)
 }
 
@@ -85,7 +85,7 @@ func (f *IntSlice) String() string {
 }
 
 // Get returns flag's value.
-func (f *IntSlice) Get() interface{} {
+func (f *IntSlice) Get() any {
 	return []int(*f)
 }
 
@@ -116,7 +116,7 @@ func (f *URL) String() string {
 }
 
 // Get returns flag's value.
-func (f *URL) Get() interface{} {
+func (f *URL) Get() any {
 	if f == nil || f.URL == nil {
 		return url.URL{}
 	}
@@ -151,7 +151,7 @@ func (f *Time) String() string {
 }
 
 // Get returns flag's value.
-func (f *Time) Get() interface{} {
+func (f *Time) Get() any {
 	if f == nil || f.Time == nil {
 		return time.Time{}
 	}

@@ -42,7 +42,7 @@ func newCommandLine(name string) *comandLine {
 	return a
 }
 
-func (cl *comandLine) parse(config interface{}, flags []string) error {
+func (cl *comandLine) parse(config any, flags []string) error {
 	if err := cl.subParse(config, flags, ""); err != nil {
 		return cl.exit(err)
 	}
@@ -50,7 +50,7 @@ func (cl *comandLine) parse(config interface{}, flags []string) error {
 	return cl.exit(cl.flagSet.Parse(flags))
 }
 
-func (cl *comandLine) subParse(config interface{}, flags []string, prefix string) error { //nolint:cyclop
+func (cl *comandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
 	cl.parseHelp(flags)
 
 	v := reflect.ValueOf(config)
@@ -194,7 +194,7 @@ func (*comandLine) newPrefix(sf reflect.StructField, prefix string) string {
 	return sf.Name
 }
 
-func (cl *comandLine) parseValue(kind reflect.Kind, varPointer interface{}, flag, value, usage string) error { //nolint:cyclop
+func (cl *comandLine) parseValue(kind reflect.Kind, varPointer any, flag, value, usage string) error { //nolint:cyclop
 	switch kind { //nolint:exhaustive
 	case reflect.Bool:
 		return cl.parseBool(varPointer.(*bool), flag, value, usage) //nolint:forcetypeassert
