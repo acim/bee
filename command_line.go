@@ -19,7 +19,7 @@ var (
 	ErrUnsupportedType   = errors.New("type not supported")
 )
 
-type comandLine struct {
+type commandLine struct {
 	flagSet       *flag.FlagSet
 	output        io.Writer
 	lookupEnvFunc func(string) (string, bool)
@@ -28,8 +28,8 @@ type comandLine struct {
 	help          bool
 }
 
-func newCommandLine(name string) *comandLine {
-	a := &comandLine{ //nolint:exhaustruct
+func newCommandLine(name string) *commandLine {
+	a := &commandLine{ //nolint:exhaustruct
 		flagSet:       flag.NewFlagSet(name, flag.ContinueOnError),
 		output:        os.Stderr,
 		lookupEnvFunc: os.LookupEnv,
@@ -42,7 +42,7 @@ func newCommandLine(name string) *comandLine {
 	return a
 }
 
-func (cl *comandLine) parse(config any, flags []string) error {
+func (cl *commandLine) parse(config any, flags []string) error {
 	if err := cl.subParse(config, flags, ""); err != nil {
 		return cl.exit(err)
 	}
@@ -50,7 +50,7 @@ func (cl *comandLine) parse(config any, flags []string) error {
 	return cl.exit(cl.flagSet.Parse(flags))
 }
 
-func (cl *comandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
+func (cl *commandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
 	cl.parseHelp(flags)
 
 	v := reflect.ValueOf(config)
@@ -124,7 +124,7 @@ func (cl *comandLine) subParse(config any, flags []string, prefix string) error 
 	return nil
 }
 
-func (cl *comandLine) validateFlagName(flagName string) error {
+func (cl *commandLine) validateFlagName(flagName string) error {
 	if cl.flagSet.Lookup(flagName) != nil {
 		return fmt.Errorf("duplicate flag %q: %w", flagName, ErrInvalidConfigType)
 	}
@@ -132,7 +132,7 @@ func (cl *comandLine) validateFlagName(flagName string) error {
 	return nil
 }
 
-func (*comandLine) flagName(sf reflect.StructField, prefix string) string {
+func (*commandLine) flagName(sf reflect.StructField, prefix string) string {
 	if f := sf.Tag.Get("flag"); f != "" {
 		return f
 	}
@@ -146,7 +146,7 @@ func (*comandLine) flagName(sf reflect.StructField, prefix string) string {
 	return strcase.ToKebab(n)
 }
 
-func (cl *comandLine) envVarName(sf reflect.StructField, prefix string) string {
+func (cl *commandLine) envVarName(sf reflect.StructField, prefix string) string {
 	if e := sf.Tag.Get("env"); e != "" {
 		return e
 	}
@@ -159,7 +159,7 @@ func (cl *comandLine) envVarName(sf reflect.StructField, prefix string) string {
 	return strcase.ToScreamingSnake(n)
 }
 
-func (*comandLine) usage(sf reflect.StructField, env string, prefix string) string {
+func (*commandLine) usage(sf reflect.StructField, env string, prefix string) string {
 	if u := sf.Tag.Get("help"); u != "" {
 		return fmt.Sprintf("%s (env %s)", u, env)
 	}
@@ -172,7 +172,7 @@ func (*comandLine) usage(sf reflect.StructField, env string, prefix string) stri
 	return fmt.Sprintf("%s (env %s)", strcase.ToDelimited(n, ' '), env)
 }
 
-func (cl *comandLine) parseHelp(flags []string) {
+func (cl *commandLine) parseHelp(flags []string) {
 	if len(flags) == 0 {
 		return
 	}
@@ -186,7 +186,7 @@ func (cl *comandLine) parseHelp(flags []string) {
 	}
 }
 
-func (*comandLine) newPrefix(sf reflect.StructField, prefix string) string {
+func (*commandLine) newPrefix(sf reflect.StructField, prefix string) string {
 	if prefix != "" {
 		return fmt.Sprintf("%s-%s", prefix, sf.Name)
 	}
@@ -194,7 +194,7 @@ func (*comandLine) newPrefix(sf reflect.StructField, prefix string) string {
 	return sf.Name
 }
 
-func (cl *comandLine) parseValue(kind reflect.Kind, varPointer any, flag, value, usage string) error { //nolint:cyclop
+func (cl *commandLine) parseValue(kind reflect.Kind, varPointer any, flag, value, usage string) error { //nolint:cyclop
 	switch kind { //nolint:exhaustive
 	case reflect.Bool:
 		return cl.parseBool(varPointer.(*bool), flag, value, usage) //nolint:forcetypeassert
@@ -236,7 +236,7 @@ func (cl *comandLine) parseValue(kind reflect.Kind, varPointer any, flag, value,
 	return fmt.Errorf("parsing value: %w: %v", ErrUnsupportedType, kind)
 }
 
-func (cl *comandLine) parseBool(p *bool, flag, value, usage string) error {
+func (cl *commandLine) parseBool(p *bool, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.BoolVar(p, flag, false, usage)
 
@@ -253,7 +253,7 @@ func (cl *comandLine) parseBool(p *bool, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseUint(p *uint, flag, value, usage string) error {
+func (cl *commandLine) parseUint(p *uint, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.UintVar(p, flag, 0, usage)
 
@@ -270,7 +270,7 @@ func (cl *comandLine) parseUint(p *uint, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseUint64(p *uint64, flag, value, usage string) error {
+func (cl *commandLine) parseUint64(p *uint64, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.Uint64Var(p, flag, 0, usage)
 
@@ -287,7 +287,7 @@ func (cl *comandLine) parseUint64(p *uint64, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseInt(p *int, flag, value, usage string) error {
+func (cl *commandLine) parseInt(p *int, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.IntVar(p, flag, 0, usage)
 
@@ -304,7 +304,7 @@ func (cl *comandLine) parseInt(p *int, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseInt64(p *int64, flag, value, usage string) error {
+func (cl *commandLine) parseInt64(p *int64, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.Int64Var(p, flag, 0, usage)
 
@@ -321,7 +321,7 @@ func (cl *comandLine) parseInt64(p *int64, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseDuration(p *time.Duration, flag, value, usage string) error {
+func (cl *commandLine) parseDuration(p *time.Duration, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.DurationVar(p, flag, 0, usage)
 
@@ -338,7 +338,7 @@ func (cl *comandLine) parseDuration(p *time.Duration, flag, value, usage string)
 	return nil
 }
 
-func (cl *comandLine) parseFloat64(p *float64, flag, value, usage string) error {
+func (cl *commandLine) parseFloat64(p *float64, flag, value, usage string) error {
 	if value == "" {
 		cl.flagSet.Float64Var(p, flag, 0, usage)
 
@@ -355,7 +355,7 @@ func (cl *comandLine) parseFloat64(p *float64, flag, value, usage string) error 
 	return nil
 }
 
-func (cl *comandLine) parseStringSlice(p *StringSlice, flag, value, usage string) error {
+func (cl *commandLine) parseStringSlice(p *StringSlice, flag, value, usage string) error {
 	if value == "" {
 		*p = StringSlice{}
 		cl.flagSet.Var(p, flag, usage)
@@ -373,7 +373,7 @@ func (cl *comandLine) parseStringSlice(p *StringSlice, flag, value, usage string
 	return nil
 }
 
-func (cl *comandLine) parseIntSlice(p *IntSlice, flag, value, usage string) error {
+func (cl *commandLine) parseIntSlice(p *IntSlice, flag, value, usage string) error {
 	if value == "" {
 		*p = IntSlice{}
 		cl.flagSet.Var(p, flag, usage)
@@ -393,7 +393,7 @@ func (cl *comandLine) parseIntSlice(p *IntSlice, flag, value, usage string) erro
 	return nil
 }
 
-func (cl *comandLine) parseURL(p *URL, flag, value, usage string) error {
+func (cl *commandLine) parseURL(p *URL, flag, value, usage string) error {
 	if value == "" {
 		*p = URL{} //nolint:exhaustruct
 		cl.flagSet.Var(p, flag, usage)
@@ -413,7 +413,7 @@ func (cl *comandLine) parseURL(p *URL, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) parseTime(p *Time, flag, value, usage string) error {
+func (cl *commandLine) parseTime(p *Time, flag, value, usage string) error {
 	if value == "" {
 		*p = Time{} //nolint:exhaustruct
 		cl.flagSet.Var(p, flag, usage)
@@ -433,7 +433,7 @@ func (cl *comandLine) parseTime(p *Time, flag, value, usage string) error {
 	return nil
 }
 
-func (cl *comandLine) exit(err error) error {
+func (cl *commandLine) exit(err error) error {
 	if err == nil {
 		return nil
 	}

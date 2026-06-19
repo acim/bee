@@ -24,7 +24,7 @@ var osExit = os.Exit
 // Service is an microservice abstraction providing graceful shutdown.
 type Service struct {
 	name        string
-	commandLine *comandLine
+	commandLine *commandLine
 	stop        chan os.Signal
 	timeout     time.Duration
 	closers     []c
