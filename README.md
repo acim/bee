@@ -43,10 +43,27 @@ Run `go test -v` to see examples output.
 
 ## Service setup
 
+`bee.NewService` is the usual entry point for HTTP services. A typical service:
+
+- defines a config struct with `flag`, `env`, `help`, and `def` tags;
+- calls `bee.NewService(name, &cfg, options...)`;
+- uses the populated `cfg` to create dependencies;
+- registers shutdown callbacks with `svc.Register`;
+- starts long-running services in goroutines;
+- calls `svc.Run()` to wait for shutdown;
+- calls `bee.Exit` for fatal startup or runtime errors.
+
+`svc.Log` is a `log/slog` JSON logger created by `bee.NewService`. Use it for
+startup and lifecycle logs, and pass it to `bee.SlogLogger` for HTTP request
+logging. `bee.WithLogLevel` accepts `DEBUG`, `INFO`, `WARN`, or `ERROR` and
+defaults to debug for unknown values. Options are applied before config parsing,
+so pass a log level value that is already known at `NewService` call time.
+
 ```go
 package main
 
 import (
+	"errors"
 	"net/http"
 
 	"go.acim.net/bee"
@@ -54,11 +71,11 @@ import (
 
 type config struct {
 	Port     string `def:":8080"`
-	LogLevel string `def:"DEBUG"`
+	LogLevel string `def:"INFO"`
 }
 
 func main() {
-	cfg := config{}
+	cfg := config{LogLevel: "INFO"}
 	svc := bee.NewService("myCoolApp", &cfg, bee.WithLogLevel(cfg.LogLevel))
 
 	mux := http.NewServeMux()
@@ -66,15 +83,19 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	var mws bee.Middlewares
+	mws.Add(bee.SlogLogger(svc.Log))
+
 	server := &http.Server{
 		Addr:    cfg.Port,
-		Handler: mux,
+		Handler: mws.Wrap(mux),
 	}
 
 	svc.Register("http server", server.Shutdown)
 
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
+go func() {
+		if err := server.ListenAndServe(); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
 			bee.Exit("failed to run HTTP server", err)
 		}
 	}()
@@ -83,6 +104,15 @@ func main() {
 	svc.Run()
 }
 ```
+
+`svc.Register` accepts a name and a shutdown function with the same shape as
+`http.Server.Shutdown`: `func(context.Context) error`. When `svc.Run` receives
+SIGINT or SIGTERM, it creates a shutdown context with the configured grace
+period, logs shutdown progress, and calls registered functions in reverse order.
+Register resources that need graceful cleanup, such as HTTP servers, DB pools,
+workers, queues, and background clients. See
+[pkg.go.dev/go.acim.net/bee](https://pkg.go.dev/go.acim.net/bee) for full API
+reference.
 
 ## HTTP Middlewares
 
@@ -95,6 +125,8 @@ type Middlewares []func(http.Handler) http.Handler
 `Add` appends middleware to the stack. `Wrap` starts with the supplied `*http.ServeMux`
 and applies middleware in reverse index order, so requests execute in the same order
 the middleware was added. If the stack is empty, `Wrap` returns the original mux.
+For `Add(first)` followed by `Add(second)`, request execution is:
+`first before -> second before -> handler -> second after -> first after`.
 
 ```go
 var mws bee.Middlewares
@@ -133,15 +165,23 @@ second after
 first after
 ```
 
-Global middleware, such as logging, security headers, and recovery, should be added
-to a shared stack and used as the server handler:
+Middlewares are plain `net/http` middleware functions, not bee-specific
+route-aware middleware.
+
+## Global and route-local middleware
+
+Global middleware should be used for cross-cutting behavior such as logging,
+security headers, recovery, and request IDs. Anything passed through
+`mws.Wrap(mux)` sits in front of the whole mux and runs before `net/http`
+`ServeMux` route selection.
 
 ```go
 var mws bee.Middlewares
 
-mws.Add(loggerMiddleware)
+mws.Add(bee.SlogLogger(svc.Log))
 mws.Add(securityHeadersMiddleware)
 mws.Add(recoveryMiddleware)
+mws.Add(requestIDMiddleware)
 
 mux := http.NewServeMux()
 
@@ -151,18 +191,16 @@ server := &http.Server{
 }
 ```
 
-Middlewares are not bee-specific or route-aware. Anything passed through
-`mws.Wrap(mux)` sits in front of the whole mux and runs before `net/http`
-`ServeMux` route selection. Route-specific behavior should usually wrap a
-sub-router or handler before it is mounted:
+Route-specific behavior, such as auth or CORS for only part of the service,
+should usually wrap a sub-mux or handler before mounting it on the root mux:
 
 ```go
 mux := http.NewServeMux()
 
 apiMux := http.NewServeMux()
-apiMux.HandleFunc("GET /users", usersHandler)
+apiMux.HandleFunc("GET /api/users", usersHandler)
 
-mux.Handle("/api/", http.StripPrefix("/api", authMiddleware(apiMux)))
+mux.Handle("/api/", authMiddleware(apiMux))
 
 server := &http.Server{
 	Addr:    ":8080",
