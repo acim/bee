@@ -84,6 +84,92 @@ func main() {
 }
 ```
 
+## HTTP Middlewares
+
+`bee.Middlewares` is a small helper for standard Go HTTP middleware:
+
+```go
+type Middlewares []func(http.Handler) http.Handler
+```
+
+`Add` appends middleware to the stack. `Wrap` starts with the supplied `*http.ServeMux`
+and applies middleware in reverse index order, so requests execute in the same order
+the middleware was added. If the stack is empty, `Wrap` returns the original mux.
+
+```go
+var mws bee.Middlewares
+
+mws.Add(func(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("first before")
+		next.ServeHTTP(w, r)
+		fmt.Println("first after")
+	})
+})
+
+mws.Add(func(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("second before")
+		next.ServeHTTP(w, r)
+		fmt.Println("second after")
+	})
+})
+
+mux := http.NewServeMux()
+mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("handler")
+})
+
+http.ListenAndServe(":8080", mws.Wrap(mux))
+```
+
+For one request, this prints:
+
+```text
+first before
+second before
+handler
+second after
+first after
+```
+
+Global middleware, such as logging, security headers, and recovery, should be added
+to a shared stack and used as the server handler:
+
+```go
+var mws bee.Middlewares
+
+mws.Add(loggerMiddleware)
+mws.Add(securityHeadersMiddleware)
+mws.Add(recoveryMiddleware)
+
+mux := http.NewServeMux()
+
+server := &http.Server{
+	Addr:    ":8080",
+	Handler: mws.Wrap(mux),
+}
+```
+
+Middlewares are not bee-specific or route-aware. Anything passed through
+`mws.Wrap(mux)` sits in front of the whole mux and runs before `net/http`
+`ServeMux` route selection. Route-specific behavior should usually wrap a
+sub-router or handler before it is mounted:
+
+```go
+mux := http.NewServeMux()
+
+apiMux := http.NewServeMux()
+apiMux.HandleFunc("GET /users", usersHandler)
+
+mux.Handle("/api/", http.StripPrefix("/api", authMiddleware(apiMux)))
+
+server := &http.Server{
+	Addr:    ":8080",
+	Handler: mws.Wrap(mux),
+}
+```
+
 ## TODO
 
 - support req struct tag to mark required values
