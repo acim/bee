@@ -30,18 +30,18 @@ var osExit = os.Exit
 // supervised goroutines, and graceful shutdown.
 type App[T any] struct {
 	name        string
-	cfg         T
+	Cfg         *T
 	commandLine *commandLine
 	timeout     time.Duration
 	logLevel    slog.Leveler
-	log         *slog.Logger
+	Log         *slog.Logger
 	output      io.Writer
 	defaultCmd  string
 	parentUsage string
-	commands    map[string]*Command[T]
-	root        *Command[T]
+	commands    map[string]*Cmd[T]
+	root        *Cmd[T]
 	closers     []c
-	ctx         context.Context
+	Ctx         context.Context
 	cancel      context.CancelFunc
 	signalCh    chan os.Signal
 	wg          sync.WaitGroup
@@ -52,25 +52,25 @@ type App[T any] struct {
 }
 
 // Handler is an application or command handler.
-type Handler[T any] func(Context[T]) error
+type Handler[T any] func(Ctx[T]) error
 
-// Context provides runtime access to application config and services.
-type Context[T any] struct {
-	Config  T
-	Log     *slog.Logger
-	Context context.Context
+// Ctx provides runtime access to application config and services.
+type Ctx[T any] struct {
+	Cfg *T
+	Log *slog.Logger
+	Ctx context.Context
 
 	app *App[T]
 }
 
-// Command is an application command node.
-type Command[T any] struct {
+// Cmd is an application command node.
+type Cmd[T any] struct {
 	name        string
 	path        string
 	description string
 	handler     Handler[T]
-	parent      *Command[T]
-	children    map[string]*Command[T]
+	parent      *Cmd[T]
+	children    map[string]*Cmd[T]
 	app         *App[T]
 }
 
@@ -89,7 +89,11 @@ type appOptions struct {
 type Option func(*appOptions)
 
 // New creates a typed application.
-func New[T any](name string, cfg T, opts ...Option) *App[T] {
+func New[T any](name string, cfg *T, opts ...Option) *App[T] {
+	if cfg == nil {
+		panic("bee: invalid nil config")
+	}
+
 	options := appOptions{ //nolint:exhaustruct
 		timeout:       defaultShutdownGracePeriod,
 		output:        os.Stderr,
@@ -109,21 +113,21 @@ func New[T any](name string, cfg T, opts ...Option) *App[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 	app := &App[T]{ //nolint:exhaustruct
 		name:        name,
-		cfg:         cfg,
+		Cfg:         cfg,
 		commandLine: cl,
 		timeout:     options.timeout,
 		logLevel:    options.logLevel,
 		output:      options.output,
 		defaultCmd:  normalizeCommandPath(options.defaultCmd),
 		parentUsage: options.parentUsage,
-		commands:    map[string]*Command[T]{},
-		ctx:         ctx,
+		commands:    map[string]*Cmd[T]{},
+		Ctx:         ctx,
 		cancel:      cancel,
 		signalCh:    make(chan os.Signal, 1),
 	}
-	app.log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: app.logLevel})) //nolint:exhaustruct
+	app.Log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: app.logLevel})) //nolint:exhaustruct
 	if options.log != nil {
-		app.log = options.log
+		app.Log = options.log
 	}
 
 	if options.parentUsage != "" {
@@ -136,42 +140,27 @@ func New[T any](name string, cfg T, opts ...Option) *App[T] {
 	return app
 }
 
-// Config returns the parsed application config.
-func (a *App[T]) Config() *T {
-	return &a.cfg
-}
-
-// Log returns the application logger.
-func (a *App[T]) Log() *slog.Logger {
-	return a.log
-}
-
-// Context returns the root application context.
-func (a *App[T]) Context() context.Context {
-	return a.ctx
-}
-
 // Register registers closer to be called on graceful shutdown.
-func (c Context[T]) Register(name string, closer func(ctx context.Context) error) {
+func (c Ctx[T]) Register(name string, closer func(ctx context.Context) error) {
 	c.appRuntime().Register(name, closer)
 }
 
 // Go starts a supervised goroutine with the application context.
-func (c Context[T]) Go(name string, fn func(context.Context) error) {
+func (c Ctx[T]) Go(name string, fn func(context.Context) error) {
 	c.appRuntime().Go(name, fn)
 }
 
 // HTTPServer starts an HTTP server as a supervised goroutine.
-func (c Context[T]) HTTPServer(name string, server *http.Server) {
+func (c Ctx[T]) HTTPServer(name string, server *http.Server) {
 	c.appRuntime().HTTPServer(name, server)
 }
 
 // Exit records a fatal application result and cancels the application context.
-func (c Context[T]) Exit(message string, err error) {
+func (c Ctx[T]) Exit(message string, err error) {
 	c.appRuntime().Exit(message, err)
 }
 
-func (c Context[T]) appRuntime() *App[T] {
+func (c Ctx[T]) appRuntime() *App[T] {
 	if c.app == nil {
 		panic("bee: runtime method called on context not created by App")
 	}
@@ -179,26 +168,26 @@ func (c Context[T]) appRuntime() *App[T] {
 	return c.app
 }
 
-func (a *App[T]) runtimeContext() Context[T] {
-	return Context[T]{
-		Config:  a.cfg,
-		Log:     a.log,
-		Context: a.ctx,
-		app:     a,
+func (a *App[T]) runtimeContext() Ctx[T] {
+	return Ctx[T]{
+		Cfg: a.Cfg,
+		Log: a.Log,
+		Ctx: a.Ctx,
+		app: a,
 	}
 }
 
-// Command registers a root command.
-func (a *App[T]) Command(name string, description string, handler ...Handler[T]) *Command[T] {
+// Cmd registers a root command.
+func (a *App[T]) Cmd(name string, description string, handler ...Handler[T]) *Cmd[T] {
 	return a.addCommand(nil, name, description, handler...)
 }
 
-// Command registers a nested command.
-func (c *Command[T]) Command(name string, description string, handler ...Handler[T]) *Command[T] {
+// Cmd registers a nested command.
+func (c *Cmd[T]) Cmd(name string, description string, handler ...Handler[T]) *Cmd[T] {
 	return c.appRuntime().addCommand(c, name, description, handler...)
 }
 
-func (c *Command[T]) appRuntime() *App[T] {
+func (c *Cmd[T]) appRuntime() *App[T] {
 	if c == nil || c.app == nil {
 		panic("bee: command method called on command not created by App")
 	}
@@ -208,7 +197,7 @@ func (c *Command[T]) appRuntime() *App[T] {
 
 // Root registers the handler used when no commands are registered.
 func (a *App[T]) Root(description string, handler Handler[T]) {
-	a.root = &Command[T]{description: description, handler: handler, app: a}
+	a.root = &Cmd[T]{description: description, handler: handler, app: a}
 }
 
 // Register registers closer to be called on graceful shutdown.
@@ -226,15 +215,15 @@ func (a *App[T]) Go(name string, fn func(context.Context) error) {
 	go func() {
 		defer a.wg.Done()
 
-		a.log.Debug("goroutine start", slog.String("name", name))
-		if err := fn(a.ctx); err != nil {
-			a.log.Error("goroutine error", slog.String("name", name), SlogError(err))
+		a.Log.Debug("goroutine start", slog.String("name", name))
+		if err := fn(a.Ctx); err != nil {
+			a.Log.Error("goroutine error", slog.String("name", name), SlogError(err))
 			a.recordErr(err)
 			a.cancel()
 
 			return
 		}
-		a.log.Debug("goroutine stop", slog.String("name", name))
+		a.Log.Debug("goroutine stop", slog.String("name", name))
 	}()
 }
 
@@ -278,10 +267,10 @@ func (a *App[T]) HTTPServer(name string, server *http.Server) {
 // Exit records a fatal application result and cancels the application context.
 func (a *App[T]) Exit(message string, err error) {
 	if err != nil {
-		a.log.Error(message, SlogError(err))
+		a.Log.Error(message, SlogError(err))
 		a.recordErr(err)
 	} else {
-		a.log.Info(message)
+		a.Log.Info(message)
 		if message == "" {
 			message = "application exit"
 		}
@@ -306,7 +295,7 @@ func (a *App[T]) RunE(args ...string) error {
 
 	go func() {
 		select {
-		case <-a.ctx.Done():
+		case <-a.Ctx.Done():
 		case <-a.signalCh:
 			a.cancel()
 		}
@@ -332,7 +321,7 @@ func (a *App[T]) RunE(args ...string) error {
 	}
 
 	a.setUsage(cmd)
-	if err := a.commandLine.parse(&a.cfg, flags); err != nil {
+	if err := a.commandLine.parse(a.Cfg, flags); err != nil {
 		return err
 	}
 
@@ -347,7 +336,7 @@ func (a *App[T]) RunE(args ...string) error {
 		a.cancel()
 	}
 
-	<-a.ctx.Done()
+	<-a.Ctx.Done()
 	a.wg.Wait()
 	a.runClosers()
 
@@ -446,11 +435,11 @@ type c struct {
 	inner func(ctx context.Context) error
 }
 
-func (a *App[T]) selectCommand(args []string) (*Command[T], []string, error) {
+func (a *App[T]) selectCommand(args []string) (*Cmd[T], []string, error) {
 	if hasHelp(args) && len(commandTokens(args)) == 0 && len(a.commands) > 0 {
 		a.setUsage(nil)
 
-		return &Command[T]{handler: func(Context[T]) error { return nil }}, args, nil
+		return &Cmd[T]{handler: func(Ctx[T]) error { return nil }}, args, nil
 	}
 
 	if len(a.commands) == 0 {
@@ -481,7 +470,7 @@ func (a *App[T]) selectCommand(args []string) (*Command[T], []string, error) {
 	return cmd, flags, nil
 }
 
-func (a *App[T]) findCommand(tokens []string) (*Command[T], int, bool) {
+func (a *App[T]) findCommand(tokens []string) (*Cmd[T], int, bool) {
 	if len(tokens) == 0 {
 		return nil, 0, false
 	}
@@ -502,13 +491,13 @@ func (a *App[T]) findCommand(tokens []string) (*Command[T], int, bool) {
 	return cmd, len(tokens), true
 }
 
-func (a *App[T]) setUsage(cmd *Command[T]) {
+func (a *App[T]) setUsage(cmd *Cmd[T]) {
 	a.commandLine.flagSet.Usage = func() {
 		a.writeUsage(cmd)
 	}
 }
 
-func (a *App[T]) writeUsage(cmd *Command[T]) {
+func (a *App[T]) writeUsage(cmd *Cmd[T]) {
 	name := a.name
 	if a.parentUsage != "" {
 		name = a.parentUsage + " " + name
@@ -551,7 +540,7 @@ func (a *App[T]) commandPaths() []string {
 	return paths
 }
 
-func (a *App[T]) commandPathsFrom(cmd *Command[T]) []string {
+func (a *App[T]) commandPathsFrom(cmd *Cmd[T]) []string {
 	if cmd == nil || cmd.path == "" {
 		return a.commandPaths()
 	}
@@ -566,7 +555,7 @@ func (a *App[T]) commandPathsFrom(cmd *Command[T]) []string {
 	return paths
 }
 
-func appendExecutableCommandPaths[T any](paths []string, cmd *Command[T]) []string {
+func appendExecutableCommandPaths[T any](paths []string, cmd *Cmd[T]) []string {
 	if cmd.handler != nil {
 		paths = append(paths, cmd.path)
 	}
@@ -578,7 +567,7 @@ func appendExecutableCommandPaths[T any](paths []string, cmd *Command[T]) []stri
 	return paths
 }
 
-func (a *App[T]) addCommand(parent *Command[T], name string, description string, handlers ...Handler[T]) *Command[T] {
+func (a *App[T]) addCommand(parent *Cmd[T], name string, description string, handlers ...Handler[T]) *Cmd[T] {
 	validateCommandName(name)
 	if len(handlers) > 1 {
 		panic(fmt.Sprintf("command %q has multiple handlers", name))
@@ -595,12 +584,12 @@ func (a *App[T]) addCommand(parent *Command[T], name string, description string,
 		panic(fmt.Sprintf("duplicate command %q", name))
 	}
 
-	cmd := &Command[T]{ //nolint:exhaustruct
+	cmd := &Cmd[T]{ //nolint:exhaustruct
 		name:        name,
 		path:        path,
 		description: description,
 		parent:      parent,
-		children:    map[string]*Command[T]{},
+		children:    map[string]*Cmd[T]{},
 		app:         a,
 	}
 	if len(handlers) == 1 {
@@ -622,17 +611,17 @@ func (a *App[T]) runClosers() {
 	closers := slices.Clone(a.closers)
 	slices.Reverse(closers)
 	if len(closers) > 0 {
-		a.log.Info("graceful shutdown", slog.Duration("grace period", a.timeout))
+		a.Log.Info("graceful shutdown", slog.Duration("grace period", a.timeout))
 	}
 
 	for _, f := range closers {
-		a.log.Debug("closing " + f.name)
+		a.Log.Debug("closing " + f.name)
 
 		ctx, cancel := context.WithTimeout(context.Background(), a.timeout)
 		err := f.inner(ctx)
 		cancel()
 		if err != nil {
-			a.log.Warn("closer "+f.name, SlogError(err))
+			a.Log.Warn("closer "+f.name, SlogError(err))
 			a.recordErr(err)
 		}
 	}

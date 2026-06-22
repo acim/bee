@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-90.3%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-90.4%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -71,9 +71,10 @@ typed `*bee.App[T]` that owns config parsing, logging, application context,
 supervised goroutines, signal handling, and shutdown cleanup. A typical app:
 
 - defines a config struct with `flag`, `env`, `help`, and `def` tags;
-- calls `bee.New(name, Config{}, options...)`;
-- registers command trees with `app.Command(...).Command(...)`;
-- uses `ctx.Config`, `ctx.Log`, and `ctx.Context` inside handlers;
+- calls `bee.New(name, &cfg, options...)`;
+- accesses app-level runtime state through `app.Cfg`, `app.Log`, and `app.Ctx`;
+- registers command trees with `app.Cmd(...).Cmd(...)`;
+- uses `ctx.Cfg`, `ctx.Log`, and `ctx.Ctx` inside handlers;
 - starts long-running work with `ctx.Go`;
 - starts HTTP servers with `ctx.HTTPServer`;
 - registers cleanup with `ctx.Register`;
@@ -99,19 +100,20 @@ type Config struct {
 }
 
 func main() {
-	app := bee.New("maia", Config{},
+	cfg := Config{}
+	app := bee.New("maia", &cfg,
 		bee.WithLogger(slog.New(slog.NewJSONHandler(os.Stdout, nil))),
 		bee.WithShutdownTimeout(30*time.Second),
 	)
 
-	start := app.Command("start", "Start services")
+	start := app.Cmd("start", "Start services")
 
-	start.Command("api", "Run HTTP API", func(ctx bee.Context[Config]) error {
+	start.Cmd("api", "Run HTTP API", func(ctx bee.Ctx[Config]) error {
 		server := &http.Server{
-			Addr: ctx.Config.HTTP.Addr,
+			Addr: ctx.Cfg.HTTP.Addr,
 		}
 		ctx.HTTPServer("http api", server)
-		ctx.Log.Info("api started", "addr", ctx.Config.HTTP.Addr)
+		ctx.Log.Info("api started", "addr", ctx.Cfg.HTTP.Addr)
 
 		return nil
 	})
@@ -123,10 +125,10 @@ func main() {
 Command nodes can be nested to build command trees:
 
 ```go
-start := app.Command("start", "Start services")
-start.Command("api", "Run HTTP API", runAPI)
-start.Command("worker", "Run worker", runWorker)
-app.Command("migrate", "Run migrations").Command("up", "Apply migrations", migrateUp)
+start := app.Cmd("start", "Start services")
+start.Cmd("api", "Run HTTP API", runAPI)
+start.Cmd("worker", "Run worker", runWorker)
+app.Cmd("migrate", "Run migrations").Cmd("up", "Apply migrations", migrateUp)
 ```
 
 Users then run:
@@ -166,8 +168,8 @@ and `ctx.Register("queue", closeQueue)`, shutdown order is:
 
 `NewService` has been removed in favor of the typed `bee.New[T]` API. Move
 startup code into a `Root` or `Command` handler, replace direct config access
-with `ctx.Config`, replace service logs with `ctx.Log`, replace manually owned
-contexts with `ctx.Context`, replace manual goroutines with `ctx.Go`, and keep
+with `ctx.Cfg`, replace service logs with `ctx.Log`, replace manually owned
+contexts with `ctx.Ctx`, replace manual goroutines with `ctx.Go`, and keep
 shutdown callbacks on `ctx.Register`.
 
 ## HTTP Middlewares
@@ -232,7 +234,7 @@ security headers, recovery, and request IDs. Anything passed through
 `ServeMux` route selection.
 
 ```go
-app.Root("Run service", func(ctx bee.Context[Config]) error {
+app.Root("Run service", func(ctx bee.Ctx[Config]) error {
 	var mws bee.Middlewares
 
 	mws.Add(bee.SlogLogger(ctx.Log))

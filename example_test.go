@@ -36,11 +36,11 @@ func Example_basic() {
 
 	app := bee.New(
 		"mycmd",
-		cfg,
+		&cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(ctx bee.Context[config]) error {
+	app.Root("Run app", func(ctx bee.Ctx[config]) error {
 		return nil
 	})
 	_ = app.RunE()
@@ -83,11 +83,11 @@ func Example_advanced() {
 
 	app := bee.New(
 		"cool",
-		cfg,
+		&cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(ctx bee.Context[config]) error {
+	app.Root("Run app", func(ctx bee.Ctx[config]) error {
 		return nil
 	})
 	_ = app.RunE()
@@ -108,26 +108,27 @@ func Example_commandTree() {
 	}()
 	os.Args = []string{"maia", "start", "api"}
 
+	cfg := config{} //nolint:exhaustruct
 	app := bee.New(
 		"maia",
-		config{}, //nolint:exhaustruct
+		&cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 		bee.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 	)
 
-	start := app.Command("start", "Start services")
-	start.Command("api", "Run HTTP API", func(ctx bee.Context[config]) error {
-		ctx.Log.Info("api starting", "addr", ctx.Config.HTTP.Addr)
+	start := app.Cmd("start", "Start services")
+	start.Cmd("api", "Run HTTP API", func(ctx bee.Ctx[config]) error {
+		ctx.Log.Info("api starting", "addr", ctx.Cfg.HTTP.Addr)
 
 		return nil
 	})
-	start.Command("worker", "Run worker", func(ctx bee.Context[config]) error {
+	start.Cmd("worker", "Run worker", func(ctx bee.Ctx[config]) error {
 		return nil
 	})
 
-	app.Command("migrate", "Run migrations").
-		Command("up", "Apply migrations", func(ctx bee.Context[config]) error {
+	app.Cmd("migrate", "Run migrations").
+		Cmd("up", "Apply migrations", func(ctx bee.Ctx[config]) error {
 			return nil
 		})
 
