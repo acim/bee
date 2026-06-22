@@ -130,6 +130,97 @@ func TestParse_duplicateFlagReturnsError(t *testing.T) {
 	assertError(t, err, `Second def: duplicate flag "same": invalid config type`)
 }
 
+func TestParse_requiredTagReturnsErrorWhenEnvAndFlagAreMissing(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+	cl.lookupEnvFunc = func(string) (string, bool) {
+		return "", false
+	}
+
+	err := cl.parse(&struct {
+		DatabaseURL string `req:"true"`
+	}{}, []string{})
+
+	assertError(t, err, `DatabaseURL req: required value missing; set TEST_DATABASE_URL or -database-url`)
+}
+
+func TestParse_requiredTagIsSatisfiedByEnv(t *testing.T) {
+	t.Parallel()
+
+	cfg := &struct {
+		DatabaseURL string `req:"true"`
+	}{}
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+	cl.lookupEnvFunc = func(env string) (string, bool) {
+		if env == "TEST_DATABASE_URL" {
+			return "postgres://env", true
+		}
+
+		return "", false
+	}
+
+	err := cl.parse(cfg, []string{})
+	assertError(t, err, "")
+
+	if cfg.DatabaseURL != "postgres://env" {
+		t.Fatalf("want env required value, got %q", cfg.DatabaseURL)
+	}
+}
+
+func TestParse_requiredTagIsSatisfiedByFlag(t *testing.T) {
+	t.Parallel()
+
+	cfg := &struct {
+		DatabaseURL string `req:"true"`
+	}{}
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+	cl.lookupEnvFunc = func(string) (string, bool) {
+		return "", false
+	}
+
+	err := cl.parse(cfg, []string{"--database-url", "postgres://flag"})
+	assertError(t, err, "")
+
+	if cfg.DatabaseURL != "postgres://flag" {
+		t.Fatalf("want flag required value, got %q", cfg.DatabaseURL)
+	}
+}
+
+func TestParse_requiredTagWorksForNestedConfig(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+	cl.lookupEnvFunc = func(string) (string, bool) {
+		return "", false
+	}
+
+	err := cl.parse(&struct {
+		HTTP struct {
+			Port int `req:"true"`
+		}
+	}{}, []string{})
+
+	assertError(t, err, `Port req: required value missing; set TEST_HTTP_PORT or -http-port`)
+}
+
+func TestParse_requiredTagRejectsDefaultTag(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	err := cl.parse(&struct {
+		DatabaseURL string `def:"postgres://default" req:"true"`
+	}{}, []string{})
+
+	assertError(t, err, `DatabaseURL req: cannot combine req and def tags`)
+}
+
 func TestExitOnErrorWritesErrorAndExits(t *testing.T) {
 	var output bytes.Buffer
 	cl := newCommandLine("test")

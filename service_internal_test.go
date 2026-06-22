@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -55,52 +56,51 @@ func TestServiceOptions(t *testing.T) {
 
 	var output bytes.Buffer
 
-	s := &Service{name: "test", commandLine: newCommandLine("test")} //nolint:exhaustruct
+	opts := appOptions{} //nolint:exhaustruct
 
-	WithShutdownGracePeriod(3 * time.Second)(s)
-	WithLogLevel("warn")(s)
-	WithErrorHandling(flag.ContinueOnError)(s)
-	WithOutput(&output)(s)
+	WithShutdownGracePeriod(3 * time.Second)(&opts)
+	WithLogLevel("warn")(&opts)
+	WithErrorHandling(flag.ContinueOnError)(&opts)
+	WithOutput(&output)(&opts)
 	WithLookupEnvFunc(func(string) (string, bool) {
 		return "value", true
-	})(s)
-	WithUsage("parent")(s)
+	})(&opts)
+	WithUsage("parent")(&opts)
 
-	if s.timeout != 3*time.Second {
-		t.Fatalf("want timeout 3s, got %s", s.timeout)
+	if opts.timeout != 3*time.Second {
+		t.Fatalf("want timeout 3s, got %s", opts.timeout)
 	}
 
-	if s.logLevel.Level() != slog.LevelWarn {
-		t.Fatalf("want warn log level, got %s", s.logLevel.Level())
+	if opts.logLevel.Level() != slog.LevelWarn {
+		t.Fatalf("want warn log level, got %s", opts.logLevel.Level())
 	}
 
-	if s.commandLine.errorHandling != flag.ContinueOnError {
-		t.Fatalf("want ContinueOnError, got %v", s.commandLine.errorHandling)
+	if opts.errorHandling != flag.ContinueOnError {
+		t.Fatalf("want ContinueOnError, got %v", opts.errorHandling)
 	}
 
-	if got := s.commandLine.flagSet.Output(); got != &output {
-		t.Fatalf("want flag set output to be overridden, got %v", got)
+	if opts.output != &output {
+		t.Fatalf("want output to be overridden, got %v", opts.output)
 	}
 
-	value, ok := s.commandLine.lookupEnvFunc("ANY")
+	value, ok := opts.lookupEnvFunc("ANY")
 	if !ok || value != "value" {
 		t.Fatalf("want lookup env override, got %q %t", value, ok)
 	}
 
-	s.commandLine.flagSet.Usage()
-	if got, want := output.String(), "Usage of parent test:\n"; got != want {
-		t.Fatalf("want usage %q, got %q", want, got)
+	if opts.parentUsage != "parent" {
+		t.Fatalf("want parent usage, got %q", opts.parentUsage)
 	}
 }
 
 func TestWithLogLevelDefaultsToDebug(t *testing.T) {
 	t.Parallel()
 
-	s := &Service{} //nolint:exhaustruct
-	WithLogLevel("trace")(s)
+	opts := appOptions{} //nolint:exhaustruct
+	WithLogLevel("trace")(&opts)
 
-	if s.logLevel.Level() != slog.LevelDebug {
-		t.Fatalf("want debug log level, got %s", s.logLevel.Level())
+	if opts.logLevel.Level() != slog.LevelDebug {
+		t.Fatalf("want debug log level, got %s", opts.logLevel.Level())
 	}
 }
 
@@ -126,11 +126,11 @@ func TestWithLogLevel(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			s := &Service{} //nolint:exhaustruct
-			WithLogLevel(tt.in)(s)
+			opts := appOptions{} //nolint:exhaustruct
+			WithLogLevel(tt.in)(&opts)
 
-			if s.logLevel.Level() != tt.want {
-				t.Fatalf("want %s log level, got %s", tt.want, s.logLevel.Level())
+			if opts.logLevel.Level() != tt.want {
+				t.Fatalf("want %s log level, got %s", tt.want, opts.logLevel.Level())
 			}
 		})
 	}
@@ -139,39 +139,61 @@ func TestWithLogLevel(t *testing.T) {
 func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
 	t.Parallel()
 
-	stop := make(chan os.Signal, 1)
-	s := &Service{ //nolint:exhaustruct
-		stop:    stop,
-		timeout: 100 * time.Millisecond,
-		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
+	app := New("test", &struct{}{}, WithOutput(io.Discard), WithErrorHandling(flag.ContinueOnError))
+	app.timeout = 100 * time.Millisecond
+	app.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var calls []string
-	s.Register("first", func(ctx context.Context) error {
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("first closer got expired context: %v", err)
-		}
+	app.Root("Run app", func(app *App[struct{}]) error {
+		app.Register("first", func(ctx context.Context) error {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("first closer got expired context: %v", err)
+			}
 
-		calls = append(calls, "first")
+			calls = append(calls, "first")
+
+			return nil
+		})
+		app.Register("second", func(ctx context.Context) error {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("second closer got expired context: %v", err)
+			}
+
+			calls = append(calls, "second")
+
+			return errors.New("close second")
+		})
+		app.cancel()
 
 		return nil
 	})
-	s.Register("second", func(ctx context.Context) error {
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("second closer got expired context: %v", err)
-		}
 
-		calls = append(calls, "second")
-
-		return errors.New("close second")
-	})
-
-	stop <- os.Interrupt
-	s.Run()
+	err := app.RunE()
+	if err == nil || !strings.Contains(err.Error(), "close second") {
+		t.Fatalf("want closer error, got %v", err)
+	}
 
 	want := []string{"second", "first"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("want closer calls %v, got %v", want, calls)
+	}
+}
+
+func TestAppNewWithUsage(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	app := New("test", &struct{}{}, WithOutput(&output), WithUsage("parent"), WithErrorHandling(flag.ContinueOnError))
+	app.Root("Run app", func(app *App[struct{}]) error {
+		return nil
+	})
+
+	if err := app.RunE("-h"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := output.String(), "Usage of parent test:\nRun app\n\nFlags:\n"; got != want {
+		t.Fatalf("want usage %q, got %q", want, got)
 	}
 }
 
@@ -252,45 +274,6 @@ func TestExitWritesMessageWithoutError(t *testing.T) {
 	}
 
 	if got, want := output.String(), "stopping\n"; got != want {
-		t.Fatalf("want stderr %q, got %q", want, got)
-	}
-}
-
-func TestNewServiceExitsOnParseError(t *testing.T) {
-	var output bytes.Buffer
-	args := os.Args
-	stderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		os.Args = args
-		os.Stderr = stderr
-		_ = r.Close()
-	})
-
-	os.Args = []string{"test"}
-	os.Stderr = w
-
-	gotCode := captureExit(t, func() {
-		_ = NewService("test", []string{}, WithErrorHandling(flag.ContinueOnError))
-	})
-
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := output.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
-
-	if gotCode != exitCode {
-		t.Fatalf("want exit code %d, got %d", exitCode, gotCode)
-	}
-
-	if got, want := output.String(), "failed parsing command line: invalid config type\n"; got != want {
 		t.Fatalf("want stderr %q, got %q", want, got)
 	}
 }

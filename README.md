@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-99.0%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-95.4%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -19,6 +19,7 @@ define default value.
 - **env** - override generated environment variable name
 - **help** - override generated flag description
 - **def** - override default (zero) value
+- **req** - require the value to be supplied by environment variable or command line flag
 
 ## Important: all struct fields should be exported.
 
@@ -37,82 +38,119 @@ Besides the types supported by flag package, this package provides additional ty
 - environment variables
 - default values
 
+Fields tagged with `req` must be supplied by the user through either an
+environment variable or command line flag. A field cannot use both `req` and
+`def`, because a default value would satisfy the field without user input.
+
 ## [Examples](example_test.go)
 
 Run `go test -v` to see examples output.
 
-## Service setup
+## App setup
 
-`bee.NewService` is the usual entry point for HTTP services. A typical service:
+`bee.New` is the entry point for services and operational commands. It creates a
+typed `*bee.App[T]` that owns config parsing, logging, application context,
+supervised goroutines, signal handling, and shutdown cleanup. A typical app:
 
 - defines a config struct with `flag`, `env`, `help`, and `def` tags;
-- calls `bee.NewService(name, &cfg, options...)`;
-- uses the populated `cfg` to create dependencies;
-- registers shutdown callbacks with `svc.Register`;
-- starts long-running services in goroutines;
-- calls `svc.Run()` to wait for shutdown;
-- calls `bee.Exit` for fatal startup or runtime errors.
+- calls `bee.New(name, &cfg, options...)`;
+- registers one or more commands with `app.Command`;
+- uses `app.Config()`, `app.Log()`, and `app.Context()` inside handlers;
+- starts long-running work with `app.Go`;
+- registers cleanup with `app.Register`;
+- calls `app.Run()`.
 
-`svc.Log` is a `log/slog` JSON logger created by `bee.NewService`. Use it for
-startup and lifecycle logs, and pass it to `bee.SlogLogger` for HTTP request
-logging. `bee.WithLogLevel` accepts `DEBUG`, `INFO`, `WARN`, or `ERROR` and
-defaults to debug for unknown values. Options are applied before config parsing,
-so pass a log level value that is already known at `NewService` call time.
+Commands are flat, normalized paths such as `start api`, `start worker`, and
+`migrate`. Command tokens come before flags, so `maia start api --port :8080`
+selects `start api` and parses `--port` into config. If no command is supplied,
+`bee.WithDefaultCommand("start api")` selects the default. Apps without a command
+set can use `app.Root("Run app", handler)`.
+
+`app.Context()` is cancelled on SIGINT/SIGTERM, `app.Exit`, and fail-fast
+supervised goroutine errors. After cancellation, `app.Run()` waits for
+supervised goroutines to stop, then runs registered closers in reverse
+registration order. Closers receive a fresh shutdown context controlled by
+`bee.WithShutdownTimeout`.
 
 ```go
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"go.acim.net/bee"
 )
 
 type config struct {
-	Port     string `def:":8080"`
+	Port     string `def:":8080" flag:"port"`
 	LogLevel string `def:"INFO"`
 }
 
 func main() {
-	cfg := config{LogLevel: "INFO"}
-	svc := bee.NewService("myCoolApp", &cfg, bee.WithLogLevel(cfg.LogLevel))
+	cfg := config{}
+	app := bee.New("maia", &cfg,
+		bee.WithDefaultCommand("start api"),
+		bee.WithShutdownTimeout(30*time.Second),
+	)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+	app.Command("start api", "Run the HTTP API server", func(app *bee.App[config]) error {
+		cfg := app.Config()
+		log := app.Log()
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		var mws bee.Middlewares
+		mws.Add(bee.SlogLogger(log))
+
+		server := &http.Server{
+			Addr:    cfg.Port,
+			Handler: mws.Wrap(mux),
+		}
+
+		app.Register("http server", server.Shutdown)
+		app.Go("http server", func(ctx context.Context) error {
+			if err := server.ListenAndServe(); err != nil &&
+				!errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+
+			return nil
+		})
+
+		log.Info("starting API", "port", cfg.Port)
+
+		return nil
 	})
 
-	var mws bee.Middlewares
-	mws.Add(bee.SlogLogger(svc.Log))
+	app.Command("start worker", "Run the background worker", func(app *bee.App[config]) error {
+		app.Go("worker", func(ctx context.Context) error {
+			<-ctx.Done()
 
-	server := &http.Server{
-		Addr:    cfg.Port,
-		Handler: mws.Wrap(mux),
-	}
+			return nil
+		})
 
-	svc.Register("http server", server.Shutdown)
+		app.Log().Info("starting worker")
 
-go func() {
-		if err := server.ListenAndServe(); err != nil &&
-			!errors.Is(err, http.ErrServerClosed) {
-			bee.Exit("failed to run HTTP server", err)
-		}
-	}()
+		return nil
+	})
 
-	svc.Log.Info("starting myCoolApp", "port", cfg.Port)
-	svc.Run()
+	app.Run()
 }
 ```
 
-`svc.Register` accepts a name and a shutdown function with the same shape as
-`http.Server.Shutdown`: `func(context.Context) error`. When `svc.Run` receives
-SIGINT or SIGTERM, it creates a shutdown context with the configured grace
-period, logs shutdown progress, and calls registered functions in reverse order.
-Register resources that need graceful cleanup, such as HTTP servers, DB pools,
-workers, queues, and background clients. See
-[pkg.go.dev/go.acim.net/bee](https://pkg.go.dev/go.acim.net/bee) for full API
-reference.
+### Migration from `NewService`
+
+`NewService` has been removed in favor of the typed `bee.New[T]` API. Move
+startup code into a `Root` or `Command` handler, replace direct config access
+with `app.Config()`, replace `svc.Log` with `app.Log()`, replace manually owned
+contexts with `app.Context()`, replace manual goroutines with `app.Go`, and keep
+shutdown callbacks on `app.Register`.
 
 ## HTTP Middlewares
 
@@ -207,10 +245,6 @@ server := &http.Server{
 	Handler: mws.Wrap(mux),
 }
 ```
-
-## TODO
-
-- support req struct tag to mark required values
 
 ## License
 

@@ -33,12 +33,16 @@ func Example_basic() {
 	}()
 	os.Args = []string{"mycmd"}
 
-	_ = bee.NewService(
+	app := bee.New(
 		"mycmd",
 		cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
+	app.Root("Run app", func(app *bee.App[config]) error {
+		return nil
+	})
+	_ = app.RunE()
 
 	// Output:
 }
@@ -76,12 +80,16 @@ func Example_advanced() {
 	}()
 	os.Args = []string{"cool"}
 
-	_ = bee.NewService(
+	app := bee.New(
 		"cool",
 		cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
+	app.Root("Run app", func(app *bee.App[config]) error {
+		return nil
+	})
+	_ = app.RunE()
 
 	// Output:
 }

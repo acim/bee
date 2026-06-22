@@ -19,6 +19,12 @@ var (
 	ErrUnsupportedType   = errors.New("type not supported")
 )
 
+type requiredField struct {
+	fieldName string
+	flagName  string
+	envName   string
+}
+
 type commandLine struct {
 	flagSet       *flag.FlagSet
 	output        io.Writer
@@ -26,6 +32,7 @@ type commandLine struct {
 	name          string
 	errorHandling flag.ErrorHandling
 	help          bool
+	required      []requiredField
 }
 
 func newCommandLine(name string) *commandLine {
@@ -43,11 +50,17 @@ func newCommandLine(name string) *commandLine {
 }
 
 func (cl *commandLine) parse(config any, flags []string) error {
+	cl.required = nil
+
 	if err := cl.subParse(config, flags, ""); err != nil {
 		return cl.exit(err)
 	}
 
-	return cl.exit(cl.flagSet.Parse(flags))
+	if err := cl.flagSet.Parse(flags); err != nil {
+		return cl.exit(err)
+	}
+
+	return cl.exit(cl.validateRequired())
 }
 
 func (cl *commandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
@@ -99,6 +112,10 @@ func (cl *commandLine) subParse(config any, flags []string, prefix string) error
 			continue
 		}
 
+		if err := cl.parseRequired(field, flagName, envVarName); err != nil {
+			return err
+		}
+
 		envVarValue, ok := cl.lookupEnvFunc(envVarName)
 		if ok && !cl.help {
 			if err := cl.validateFlagName(flagName); err != nil {
@@ -119,6 +136,54 @@ func (cl *commandLine) subParse(config any, flags []string, prefix string) error
 		if err := cl.parseValue(field.Type.Kind(), p, flagName, field.Tag.Get("def"), usage); err != nil {
 			return fmt.Errorf("%s def: %w", field.Name, err)
 		}
+	}
+
+	return nil
+}
+
+func (cl *commandLine) parseRequired(field reflect.StructField, flagName string, envName string) error {
+	if _, ok := field.Tag.Lookup("req"); !ok {
+		return nil
+	}
+
+	if _, ok := field.Tag.Lookup("def"); ok {
+		return fmt.Errorf("%s req: cannot combine req and def tags", field.Name)
+	}
+
+	if _, ok := cl.lookupEnvFunc(envName); ok && !cl.help {
+		return nil
+	}
+
+	cl.required = append(cl.required, requiredField{
+		fieldName: field.Name,
+		flagName:  flagName,
+		envName:   envName,
+	})
+
+	return nil
+}
+
+func (cl *commandLine) validateRequired() error {
+	if cl.help {
+		return nil
+	}
+
+	setFlags := map[string]struct{}{}
+	cl.flagSet.Visit(func(f *flag.Flag) {
+		setFlags[f.Name] = struct{}{}
+	})
+
+	for _, field := range cl.required {
+		if _, ok := setFlags[field.flagName]; ok {
+			continue
+		}
+
+		return fmt.Errorf(
+			"%s req: required value missing; set %s or -%s",
+			field.fieldName,
+			field.envName,
+			field.flagName,
+		)
 	}
 
 	return nil
