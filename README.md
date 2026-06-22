@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-95.4%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-95.3%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -76,8 +76,6 @@ registration order. Closers receive a fresh shutdown context controlled by
 package main
 
 import (
-	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -113,15 +111,7 @@ func main() {
 			Handler: mws.Wrap(mux),
 		}
 
-		app.Register("http server", server.Shutdown)
-		app.Go("http server", func(ctx context.Context) error {
-			if err := server.ListenAndServe(); err != nil &&
-				!errors.Is(err, http.ErrServerClosed) {
-				return err
-			}
-
-			return nil
-		})
+		app.HTTPServer("http server", server)
 
 		log.Info("starting API", "port", cfg.Port)
 

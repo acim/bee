@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"log/slog"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -123,6 +124,33 @@ func TestAppDefaultCommand(t *testing.T) {
 
 	if cfg.Port != 6060 {
 		t.Fatalf("want flags to parse for default command, got port %d", cfg.Port)
+	}
+}
+
+func TestAppHTTPServerShutsDownWhenContextIsCancelled(t *testing.T) {
+	t.Parallel()
+
+	cfg := &appTestConfig{}
+	output := &bytes.Buffer{}
+	app := newTestApp(t, cfg, output)
+	app.timeout = 50 * time.Millisecond
+
+	server := &http.Server{
+		Addr: "127.0.0.1:0",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+
+	app.Root("Run app", func(app *App[appTestConfig]) error {
+		app.HTTPServer("http server", server)
+		app.cancel()
+
+		return nil
+	})
+
+	if err := app.RunE(); err != nil {
+		t.Fatalf("RunE() error = %v, want nil", err)
 	}
 }
 

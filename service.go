@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -174,6 +175,31 @@ func (a *App[T]) Go(name string, fn func(context.Context) error) {
 		}
 		a.log.Debug("goroutine stop", slog.String("name", name))
 	}()
+}
+
+// HTTPServer starts an HTTP server as a supervised goroutine and shuts it down
+// when the application context is cancelled.
+func (a *App[T]) HTTPServer(name string, server *http.Server) {
+	a.Go(name, func(ctx context.Context) error {
+		shutdownDone := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), a.timeout)
+				defer cancel()
+				_ = server.Shutdown(shutdownCtx)
+			case <-shutdownDone:
+			}
+		}()
+
+		err := server.ListenAndServe()
+		close(shutdownDone)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+
+		return err
+	})
 }
 
 // Exit records a fatal application result and cancels the application context.
