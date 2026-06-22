@@ -928,6 +928,230 @@ func TestParseValidationMinMaxRejectsNaN(t *testing.T) {
 	assertError(t, err, `Rate min: value NaN must be a number`)
 }
 
+func TestParseValidationCoversAdditionalBranches(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"int max valid": {
+			cfg: &struct {
+				Port int `max:"9"`
+			}{},
+			flags: []string{"--port", "8"},
+		},
+		"uint min valid": {
+			cfg: &struct {
+				Workers uint `min:"1"`
+			}{},
+			flags: []string{"--workers", "2"},
+		},
+		"int64 min valid": {
+			cfg: &struct {
+				Offset int64 `min:"-2"`
+			}{},
+			flags: []string{"--offset", "-1"},
+		},
+		"uint64 max valid": {
+			cfg: &struct {
+				Size uint64 `max:"10"`
+			}{},
+			flags: []string{"--size", "9"},
+		},
+		"float min valid": {
+			cfg: &struct {
+				Rate float64 `min:"0.5"`
+			}{},
+			flags: []string{"--rate", "0.75"},
+		},
+		"duration max valid": {
+			cfg: &struct {
+				Timeout time.Duration `max:"1s"`
+			}{},
+			flags: []string{"--timeout", "500ms"},
+		},
+		"duration max": {
+			cfg: &struct {
+				Timeout time.Duration `max:"100ms"`
+			}{},
+			flags:   []string{"--timeout", "200ms"},
+			wantErr: `Timeout max: value 200ms must be <= 100ms`,
+		},
+		"duration min parse error": {
+			cfg: &struct {
+				Timeout time.Duration `min:"soon"`
+			}{},
+			flags:   []string{"--timeout", "200ms"},
+			wantErr: `Timeout min: parsing duration "soon": time: invalid duration "soon"`,
+		},
+		"float max": {
+			cfg: &struct {
+				Rate float64 `max:"1"`
+			}{},
+			flags:   []string{"--rate", "2"},
+			wantErr: `Rate max: value 2 must be <= 1`,
+		},
+		"float max parse error": {
+			cfg: &struct {
+				Rate float64 `max:"nope"`
+			}{},
+			flags:   []string{"--rate", "1"},
+			wantErr: `Rate max: parsing float "nope": strconv.ParseFloat: parsing "nope": invalid syntax`,
+		},
+		"min parse error": {
+			cfg: &struct {
+				Port int `min:"nope"`
+			}{},
+			flags:   []string{"--port", "1"},
+			wantErr: `Port min: parsing int "nope": strconv.ParseInt: parsing "nope": invalid syntax`,
+		},
+		"max parse error": {
+			cfg: &struct {
+				Workers uint `max:"nope"`
+			}{},
+			flags:   []string{"--workers", "1"},
+			wantErr: `Workers max: parsing uint "nope": strconv.ParseUint: parsing "nope": invalid syntax`,
+		},
+		"min unsupported": {
+			cfg: &struct {
+				Name string `min:"1"`
+			}{},
+			flags:   []string{"--name", "bee"},
+			wantErr: `Name min: unsupported type string`,
+		},
+		"length parse error": {
+			cfg: &struct {
+				Name string `len:"nope"`
+			}{},
+			flags:   []string{"--name", "bee"},
+			wantErr: `Name len: parsing length "nope": strconv.Atoi: parsing "nope": invalid syntax`,
+		},
+		"length unsupported": {
+			cfg: &struct {
+				Count int `len:"1"`
+			}{},
+			flags:   []string{"--count", "1"},
+			wantErr: `Count len: unsupported type int`,
+		},
+		"regex compile error": {
+			cfg: &struct {
+				Name string `regex:"["`
+			}{},
+			flags:   []string{"--name", "bee"},
+			wantErr: `Name regex: compiling "[": error parsing regexp: missing closing ]: ` + "`[`",
+		},
+		"regex unsupported": {
+			cfg: &struct {
+				Count int `regex:"^[0-9]+$"`
+			}{},
+			flags:   []string{"--count", "1"},
+			wantErr: `Count regex: unsupported type int`,
+		},
+		"prefix unsupported": {
+			cfg: &struct {
+				Count int `prefix:"1"`
+			}{},
+			flags:   []string{"--count", "2"},
+			wantErr: `Count prefix: unsupported type int`,
+		},
+		"suffix unsupported": {
+			cfg: &struct {
+				Count int `suffix:"1"`
+			}{},
+			flags:   []string{"--count", "2"},
+			wantErr: `Count suffix: unsupported type int`,
+		},
+		"suffix url valid": {
+			cfg: &struct {
+				API URL `suffix:"/db"`
+			}{},
+			flags: []string{"--api", "postgres://localhost/db"},
+		},
+		"oneof bool valid": {
+			cfg: &struct {
+				Debug bool `oneof:"true"`
+			}{},
+			flags: []string{"--debug"},
+		},
+		"oneof uint mismatch": {
+			cfg: &struct {
+				Workers uint `oneof:"2"`
+			}{},
+			flags:   []string{"--workers", "3"},
+			wantErr: `Workers oneof: value "3" must be one of 2`,
+		},
+		"nonzero url valid": {
+			cfg: &struct {
+				API URL `nonzero:""`
+			}{},
+			flags: []string{"--api", "https://example.test"},
+		},
+		"nonzero time valid": {
+			cfg: &struct {
+				Start Time `nonzero:""`
+			}{},
+			flags: []string{"--start", "2026-06-22T12:00:00Z"},
+		},
+		"nonzero bool valid": {
+			cfg: &struct {
+				Enabled bool `nonzero:""`
+			}{},
+			flags: []string{"--enabled"},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestValidationStringFormatsSupportedTypes(t *testing.T) {
+	t.Parallel()
+
+	rawURL, err := url.Parse("https://example.test/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	link := URL{URL: rawURL}
+	startTime := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	start := Time{Time: &startTime}
+
+	tests := map[string]struct {
+		value reflect.Value
+		want  string
+	}{
+		"url":      {value: reflect.ValueOf(&link).Elem(), want: "https://example.test/path"},
+		"time":     {value: reflect.ValueOf(&start).Elem(), want: "2026-06-22T12:00:00Z"},
+		"duration": {value: reflect.ValueOf(2 * time.Second), want: "2s"},
+		"bool":     {value: reflect.ValueOf(true), want: "true"},
+		"int64":    {value: reflect.ValueOf(int64(-3)), want: "-3"},
+		"uint64":   {value: reflect.ValueOf(uint64(7)), want: "7"},
+		"float":    {value: reflect.ValueOf(1.25), want: "1.25"},
+		"default":  {value: reflect.ValueOf(struct{ Name string }{Name: "bee"}), want: "{bee}"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := validationString(tt.value)
+			if got != tt.want {
+				t.Fatalf("want %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestParseValidationMinMaxRejectsUnsupportedType(t *testing.T) {
 	t.Parallel()
 
