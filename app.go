@@ -52,7 +52,7 @@ type App[T any] struct {
 }
 
 // Handler is an application or command handler.
-type Handler[T any] func(Ctx[T]) error
+type Handler[T any] func(*Ctx[T]) error
 
 // Ctx provides runtime access to application config and services.
 type Ctx[T any] struct {
@@ -168,8 +168,8 @@ func (c Ctx[T]) appRuntime() *App[T] {
 	return c.app
 }
 
-func (a *App[T]) runtimeContext() Ctx[T] {
-	return Ctx[T]{
+func (a *App[T]) runtimeContext() *Ctx[T] {
+	return &Ctx[T]{
 		Cfg: a.Cfg,
 		Log: a.Log,
 		Ctx: a.Ctx,
@@ -439,7 +439,7 @@ func (a *App[T]) selectCommand(args []string) (*Cmd[T], []string, error) {
 	if hasHelp(args) && len(commandTokens(args)) == 0 && len(a.commands) > 0 {
 		a.setUsage(nil)
 
-		return &Cmd[T]{handler: func(Ctx[T]) error { return nil }}, args, nil
+		return &Cmd[T]{handler: func(*Ctx[T]) error { return nil }}, args, nil
 	}
 
 	if len(a.commands) == 0 {

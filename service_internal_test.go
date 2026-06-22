@@ -150,7 +150,7 @@ func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
 	app.timeout = 100 * time.Millisecond
 
 	var calls []string
-	app.Root("Run app", func(ctx Ctx[struct{}]) error {
+	app.Root("Run app", func(ctx *Ctx[struct{}]) error {
 		ctx.Register("first", func(run context.Context) error {
 			if err := run.Err(); err != nil {
 				t.Fatalf("first closer got expired context: %v", err)
@@ -191,7 +191,7 @@ func TestAppNewWithUsage(t *testing.T) {
 	var output bytes.Buffer
 	cfg := struct{}{}
 	app := New("test", &cfg, WithOutput(&output), WithUsage("parent"), WithErrorHandling(flag.ContinueOnError))
-	app.Root("Run app", func(ctx Ctx[struct{}]) error {
+	app.Root("Run app", func(ctx *Ctx[struct{}]) error {
 		return nil
 	})
 

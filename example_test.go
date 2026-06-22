@@ -40,7 +40,7 @@ func Example_basic() {
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(ctx bee.Ctx[config]) error {
+	app.Root("Run app", func(ctx *bee.Ctx[config]) error {
 		return nil
 	})
 	_ = app.RunE()
@@ -87,7 +87,7 @@ func Example_advanced() {
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(ctx bee.Ctx[config]) error {
+	app.Root("Run app", func(ctx *bee.Ctx[config]) error {
 		return nil
 	})
 	_ = app.RunE()
@@ -118,17 +118,17 @@ func Example_commandTree() {
 	)
 
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run HTTP API", func(ctx bee.Ctx[config]) error {
+	start.Cmd("api", "Run HTTP API", func(ctx *bee.Ctx[config]) error {
 		ctx.Log.Info("api starting", "addr", ctx.Cfg.HTTP.Addr)
 
 		return nil
 	})
-	start.Cmd("worker", "Run worker", func(ctx bee.Ctx[config]) error {
+	start.Cmd("worker", "Run worker", func(ctx *bee.Ctx[config]) error {
 		return nil
 	})
 
 	app.Cmd("migrate", "Run migrations").
-		Cmd("up", "Apply migrations", func(ctx bee.Ctx[config]) error {
+		Cmd("up", "Apply migrations", func(ctx *bee.Ctx[config]) error {
 			return nil
 		})
 

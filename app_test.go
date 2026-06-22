@@ -50,7 +50,7 @@ func TestAppRootReceivesRuntimeContextWithFields(t *testing.T) {
 	var goRan bool
 	started := make(chan struct{})
 
-	app.Root("Run service", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run service", func(ctx *Ctx[appTestConfig]) error {
 		gotConfig = *ctx.Cfg
 		gotLog = ctx.Log
 		gotContext = ctx.Ctx
@@ -171,12 +171,12 @@ func TestAppCommandParsingAndConfig(t *testing.T) {
 	}))
 
 	var ran string
-	start := app.Cmd("start", "Run starter", func(ctx Ctx[appTestConfig]) error {
+	start := app.Cmd("start", "Run starter", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start"
 
 		return nil
 	})
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start api"
 
 		if ctx.Cfg.Port != 7070 {
@@ -224,12 +224,12 @@ func TestAppDefaultCommand(t *testing.T) {
 
 	var ran string
 	start := app.Cmd("start", "Run services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		ran = "api"
 
 		return nil
 	})
-	start.Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
 		ran = "worker"
 
 		return nil
@@ -256,12 +256,12 @@ func TestAppCommandTreeDispatchesNestedCommand(t *testing.T) {
 
 	var ran string
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start api"
 
 		return nil
 	})
-	start.Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start worker"
 
 		return nil
@@ -282,12 +282,12 @@ func TestAppCommandTreeAllowsIntermediateHandler(t *testing.T) {
 	app := newTestApp(t, appTestConfig{}, output)
 
 	var ran string
-	start := app.Cmd("start", "Start services", func(ctx Ctx[appTestConfig]) error {
+	start := app.Cmd("start", "Start services", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start"
 
 		return nil
 	})
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		ran = "start api"
 
 		return nil
@@ -306,7 +306,7 @@ func TestAppCommandTreeRejectsDuplicateSibling(t *testing.T) {
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error { return nil })
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error { return nil })
 
 	defer func() {
 		got := recover()
@@ -318,7 +318,7 @@ func TestAppCommandTreeRejectsDuplicateSibling(t *testing.T) {
 		}
 	}()
 
-	start.Cmd("api", "Run API again", func(ctx Ctx[appTestConfig]) error { return nil })
+	start.Cmd("api", "Run API again", func(ctx *Ctx[appTestConfig]) error { return nil })
 }
 
 func TestAppCommandTreeRejectsInvalidName(t *testing.T) {
@@ -352,8 +352,8 @@ func TestAppCommandTreeUnknownCommandShowsUsage(t *testing.T) {
 	output := &bytes.Buffer{}
 	app := newTestApp(t, appTestConfig{}, output)
 	app.Cmd("start", "Start services").
-		Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error { return nil })
-	app.Cmd("migrate", "Run migrations", func(ctx Ctx[appTestConfig]) error { return nil })
+		Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error { return nil })
+	app.Cmd("migrate", "Run migrations", func(ctx *Ctx[appTestConfig]) error { return nil })
 
 	err := app.RunE("start", "sender")
 	if err == nil {
@@ -379,12 +379,12 @@ func TestAppCommandTreeDefaultCommand(t *testing.T) {
 
 	var ran string
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		ran = "api"
 
 		return nil
 	})
-	start.Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
 		ran = "worker"
 
 		return nil
@@ -404,8 +404,8 @@ func TestAppCommandGroupHelpListsChildren(t *testing.T) {
 	output := &bytes.Buffer{}
 	app := newTestApp(t, appTestConfig{}, output)
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error { return nil })
-	start.Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error { return nil })
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error { return nil })
+	start.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error { return nil })
 
 	if err := app.RunE("start", "--help"); err != nil {
 		t.Fatal(err)
@@ -459,7 +459,7 @@ func TestAppHTTPServerShutsDownWhenContextIsCancelled(t *testing.T) {
 		}),
 	}
 
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.HTTPServer("http server", server)
 		app.cancel()
 
@@ -503,7 +503,7 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 		}),
 	}
 
-	app.Root("Run service", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run service", func(ctx *Ctx[appTestConfig]) error {
 		ctx.HTTPServer("http api", server)
 		ctx.Register("database", func(context.Context) error {
 			events <- "database closed"
@@ -592,7 +592,7 @@ func TestAppDuplicateCommandPanicsClearly(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
-	app.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	app.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
 
@@ -607,7 +607,7 @@ func TestAppDuplicateCommandPanicsClearly(t *testing.T) {
 		}
 	}()
 
-	app.Cmd("api", "Run API again", func(ctx Ctx[appTestConfig]) error {
+	app.Cmd("api", "Run API again", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
 }
@@ -617,10 +617,10 @@ func TestAppUnknownCommandShowsUsage(t *testing.T) {
 
 	output := &bytes.Buffer{}
 	app := newTestApp(t, appTestConfig{}, output)
-	app.Cmd("start", "Start services").Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	app.Cmd("start", "Start services").Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
-	app.Cmd("migrate", "Run migrations", func(ctx Ctx[appTestConfig]) error {
+	app.Cmd("migrate", "Run migrations", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
 
@@ -647,10 +647,10 @@ func TestAppHelpListsCommandsAndFlags(t *testing.T) {
 	output := &bytes.Buffer{}
 	app := newTestApp(t, appTestConfig{}, output, WithDefaultCommand("start api"))
 	start := app.Cmd("start", "Start services")
-	start.Cmd("api", "Run API", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("api", "Run API", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
-	start.Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error {
+	start.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
 
@@ -679,7 +679,7 @@ func TestAppCommandHelpListsSelectedCommandAndFlags(t *testing.T) {
 
 	output := &bytes.Buffer{}
 	app := newTestApp(t, appTestConfig{}, output)
-	app.Cmd("start", "Start services").Cmd("worker", "Run worker", func(ctx Ctx[appTestConfig]) error {
+	app.Cmd("start", "Start services").Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
 		return nil
 	})
 
@@ -708,7 +708,7 @@ func TestAppRootCommand(t *testing.T) {
 	app := newTestApp(t, cfg, output)
 
 	var ran bool
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ran = true
 
 		return nil
@@ -732,7 +732,7 @@ func TestAppRunEReturnsConfigParseError(t *testing.T) {
 
 	cfg := []string{}
 	app := New("maia", &cfg, WithOutput(io.Discard), WithErrorHandling(flag.ContinueOnError))
-	app.Root("Run app", func(ctx Ctx[[]string]) error {
+	app.Root("Run app", func(ctx *Ctx[[]string]) error {
 		return nil
 	})
 
@@ -748,7 +748,7 @@ func TestAppContextCancelledOnSignal(t *testing.T) {
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	entered := make(chan struct{})
 	done := make(chan struct{})
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		close(entered)
 		<-ctx.Ctx.Done()
 		close(done)
@@ -781,7 +781,7 @@ func TestAppGoReceivesAppContextAndFailsFast(t *testing.T) {
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	boom := errors.New("boom")
 	gotContext := make(chan bool, 1)
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.Go("worker", func(run context.Context) error {
 			gotContext <- run == ctx.Ctx
 
@@ -816,7 +816,7 @@ func TestAppGoExitsCleanlyOnContextCancellation(t *testing.T) {
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	stopped := make(chan struct{})
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.Go("worker", func(run context.Context) error {
 			<-run.Done()
 			close(stopped)
@@ -845,7 +845,7 @@ func TestAppClosersRunAfterGoroutinesStopInReverseOrder(t *testing.T) {
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	var calls []string
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.Register("first", func(run context.Context) error {
 			if run.Err() != nil {
 				t.Fatalf("first closer got cancelled shutdown context: %v", run.Err())
@@ -895,7 +895,7 @@ func TestAppExitRecordsFatalError(t *testing.T) {
 	t.Parallel()
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.Exit("fatal stop", nil)
 
 		return nil
@@ -917,7 +917,7 @@ func TestAppCommandSetupErrorRunsRegisteredClosers(t *testing.T) {
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	setupErr := errors.New("setup failed")
 	var closed bool
-	app.Root("Run app", func(ctx Ctx[appTestConfig]) error {
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
 		ctx.Register("resource", func(run context.Context) error {
 			closed = true
 

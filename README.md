@@ -108,7 +108,7 @@ func main() {
 
 	start := app.Cmd("start", "Start services")
 
-	start.Cmd("api", "Run HTTP API", func(ctx bee.Ctx[Config]) error {
+	start.Cmd("api", "Run HTTP API", func(ctx *bee.Ctx[Config]) error {
 		server := &http.Server{
 			Addr: ctx.Cfg.HTTP.Addr,
 		}
@@ -234,7 +234,7 @@ security headers, recovery, and request IDs. Anything passed through
 `ServeMux` route selection.
 
 ```go
-app.Root("Run service", func(ctx bee.Ctx[Config]) error {
+app.Root("Run service", func(ctx *bee.Ctx[Config]) error {
 	var mws bee.Middlewares
 
 	mws.Add(bee.SlogLogger(ctx.Log))
