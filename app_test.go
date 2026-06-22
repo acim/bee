@@ -516,7 +516,7 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 		})
 
 		go func() {
-			clientDone <- getUntilOK("http://" + addr)
+			clientDone <- getUntilStatus("http://"+addr, http.StatusNoContent)
 		}()
 
 		select {
@@ -580,12 +580,15 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 	}
 }
 
-func getUntilOK(url string) error {
+func getUntilStatus(url string, statusCode int) error {
 	deadline := time.Now().Add(time.Second)
 	for {
 		resp, err := http.Get(url)
 		if err == nil {
 			_ = resp.Body.Close()
+			if resp.StatusCode != statusCode {
+				return fmt.Errorf("GET %s returned status %d, want %d", url, resp.StatusCode, statusCode)
+			}
 
 			return nil
 		}

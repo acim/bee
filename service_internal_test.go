@@ -214,9 +214,7 @@ func TestAppRunDoesNotExitOnSuccess(t *testing.T) {
 	})
 
 	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
-	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
-		ctx.app.cancel()
-
+	app.Root("Run app", func(*Ctx[appTestConfig]) error {
 		return nil
 	})
 
