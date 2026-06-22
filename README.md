@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-95.3%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-90.3%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -41,6 +41,24 @@ Besides the types supported by flag package, this package provides additional ty
 Fields tagged with `req` must be supplied by the user through either an
 environment variable or command line flag. A field cannot use both `req` and
 `def`, because a default value would satisfy the field without user input.
+Validation failures return parse errors through the configured
+`flag.ErrorHandling` mode.
+
+`req` means the value must be supplied by environment variable or flag.
+`nonzero` means the final parsed value, after defaults/env/flags, must not be zero.
+
+| Tag | Applies To | Meaning |
+| --- | --- | --- |
+| `min` | numbers, `time.Duration` | Minimum final value |
+| `max` | numbers, `time.Duration` | Maximum final value |
+| `oneof` | strings, numbers, `time.Duration` | Comma-separated allowed values; whitespace is trimmed |
+| `len` | strings, `bee.StringSlice`, `bee.IntSlice` | Exact length |
+| `minlen` | strings, `bee.StringSlice`, `bee.IntSlice` | Minimum length |
+| `maxlen` | strings, `bee.StringSlice`, `bee.IntSlice` | Maximum length |
+| `regex` | strings | Regular expression the value must match |
+| `prefix` | strings, `bee.URL` | Comma-separated allowed prefixes; whitespace is trimmed |
+| `suffix` | strings, `bee.URL` | Comma-separated allowed suffixes; whitespace is trimmed |
+| `nonzero` | all supported types | Final parsed value must not be the zero value |
 
 ## [Examples](example_test.go)
 
@@ -53,79 +71,47 @@ typed `*bee.App[T]` that owns config parsing, logging, application context,
 supervised goroutines, signal handling, and shutdown cleanup. A typical app:
 
 - defines a config struct with `flag`, `env`, `help`, and `def` tags;
-- calls `bee.New(name, &cfg, options...)`;
-- registers one or more commands with `app.Command`;
-- uses `app.Config()`, `app.Log()`, and `app.Context()` inside handlers;
-- starts long-running work with `app.Go`;
-- registers cleanup with `app.Register`;
+- calls `bee.New(name, Config{}, options...)`;
+- registers command trees with `app.Command(...).Command(...)`;
+- uses `ctx.Config`, `ctx.Log`, and `ctx.Context` inside handlers;
+- starts long-running work with `ctx.Go`;
+- starts HTTP servers with `ctx.HTTPServer`;
+- registers cleanup with `ctx.Register`;
+- stops the app with `ctx.Exit`;
 - calls `app.Run()`.
-
-Commands are flat, normalized paths such as `start api`, `start worker`, and
-`migrate`. Command tokens come before flags, so `maia start api --port :8080`
-selects `start api` and parses `--port` into config. If no command is supplied,
-`bee.WithDefaultCommand("start api")` selects the default. Apps without a command
-set can use `app.Root("Run app", handler)`.
-
-`app.Context()` is cancelled on SIGINT/SIGTERM, `app.Exit`, and fail-fast
-supervised goroutine errors. After cancellation, `app.Run()` waits for
-supervised goroutines to stop, then runs registered closers in reverse
-registration order. Closers receive a fresh shutdown context controlled by
-`bee.WithShutdownTimeout`.
 
 ```go
 package main
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"go.acim.net/bee"
 )
 
-type config struct {
-	Port     string `def:":8080" flag:"port"`
-	LogLevel string `def:"INFO"`
+type Config struct {
+	HTTP struct {
+		Addr string `def:":8080"`
+	}
 }
 
 func main() {
-	cfg := config{}
-	app := bee.New("maia", &cfg,
-		bee.WithDefaultCommand("start api"),
+	app := bee.New("maia", Config{},
+		bee.WithLogger(slog.New(slog.NewJSONHandler(os.Stdout, nil))),
 		bee.WithShutdownTimeout(30*time.Second),
 	)
 
-	app.Command("start api", "Run the HTTP API server", func(app *bee.App[config]) error {
-		cfg := app.Config()
-		log := app.Log()
+	start := app.Command("start", "Start services")
 
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})
-
-		var mws bee.Middlewares
-		mws.Add(bee.SlogLogger(log))
-
+	start.Command("api", "Run HTTP API", func(ctx bee.Context[Config]) error {
 		server := &http.Server{
-			Addr:    cfg.Port,
-			Handler: mws.Wrap(mux),
+			Addr: ctx.Config.HTTP.Addr,
 		}
-
-		app.HTTPServer("http server", server)
-
-		log.Info("starting API", "port", cfg.Port)
-
-		return nil
-	})
-
-	app.Command("start worker", "Run the background worker", func(app *bee.App[config]) error {
-		app.Go("worker", func(ctx context.Context) error {
-			<-ctx.Done()
-
-			return nil
-		})
-
-		app.Log().Info("starting worker")
+		ctx.HTTPServer("http api", server)
+		ctx.Log.Info("api started", "addr", ctx.Config.HTTP.Addr)
 
 		return nil
 	})
@@ -134,13 +120,55 @@ func main() {
 }
 ```
 
+Command nodes can be nested to build command trees:
+
+```go
+start := app.Command("start", "Start services")
+start.Command("api", "Run HTTP API", runAPI)
+start.Command("worker", "Run worker", runWorker)
+app.Command("migrate", "Run migrations").Command("up", "Apply migrations", migrateUp)
+```
+
+Users then run:
+
+```text
+maia start api
+maia start worker
+maia migrate up
+```
+
+For apps without subcommands, register a root handler:
+
+```go
+app.Root("Run service", runService)
+app.Run()
+```
+
+### Graceful shutdown
+
+`ctx.HTTPServer` starts the server as a supervised goroutine. When the app
+context is cancelled, bee calls `server.Shutdown` with a fresh shutdown context
+controlled by `WithShutdownTimeout`.
+
+Registered closers run after supervised goroutines finish. This means HTTP
+servers stop accepting new requests and drain in-flight requests before shared
+dependencies are closed.
+
+For `ctx.HTTPServer("http api", server)`, `ctx.Register("database", closeDB)`,
+and `ctx.Register("queue", closeQueue)`, shutdown order is:
+
+1. app context is cancelled
+2. HTTP server starts graceful shutdown
+3. bee waits for supervised goroutines, including HTTP servers, to finish
+4. registered closers run in reverse order: queue, then database
+
 ### Migration from `NewService`
 
 `NewService` has been removed in favor of the typed `bee.New[T]` API. Move
 startup code into a `Root` or `Command` handler, replace direct config access
-with `app.Config()`, replace `svc.Log` with `app.Log()`, replace manually owned
-contexts with `app.Context()`, replace manual goroutines with `app.Go`, and keep
-shutdown callbacks on `app.Register`.
+with `ctx.Config`, replace service logs with `ctx.Log`, replace manually owned
+contexts with `ctx.Context`, replace manual goroutines with `ctx.Go`, and keep
+shutdown callbacks on `ctx.Register`.
 
 ## HTTP Middlewares
 
@@ -204,19 +232,25 @@ security headers, recovery, and request IDs. Anything passed through
 `ServeMux` route selection.
 
 ```go
-var mws bee.Middlewares
+app.Root("Run service", func(ctx bee.Context[Config]) error {
+	var mws bee.Middlewares
 
-mws.Add(bee.SlogLogger(svc.Log))
-mws.Add(securityHeadersMiddleware)
-mws.Add(recoveryMiddleware)
-mws.Add(requestIDMiddleware)
+	mws.Add(bee.SlogLogger(ctx.Log))
+	mws.Add(securityHeadersMiddleware)
+	mws.Add(recoveryMiddleware)
+	mws.Add(requestIDMiddleware)
 
-mux := http.NewServeMux()
+	mux := http.NewServeMux()
 
-server := &http.Server{
-	Addr:    ":8080",
-	Handler: mws.Wrap(mux),
-}
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mws.Wrap(mux),
+	}
+
+	ctx.HTTPServer("http api", server)
+
+	return nil
+})
 ```
 
 Route-specific behavior, such as auth or CORS for only part of the service,

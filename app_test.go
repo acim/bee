@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
@@ -22,25 +24,109 @@ type appTestConfig struct {
 	}
 }
 
-func newTestApp(t *testing.T, cfg *appTestConfig, output *bytes.Buffer, opts ...Option) *App[appTestConfig] {
+func newTestApp(t *testing.T, cfg appTestConfig, output *bytes.Buffer, opts ...Option) *App[appTestConfig] {
 	t.Helper()
 
 	allOpts := []Option{
 		WithOutput(output),
 		WithErrorHandling(flag.ContinueOnError),
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 	}
 	allOpts = append(allOpts, opts...)
 
-	app := New("maia", cfg, allOpts...)
-	app.log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	return New("maia", cfg, allOpts...)
+}
 
-	return app
+func TestAppRootReceivesRuntimeContextWithFields(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	app := newTestApp(t, appTestConfig{}, output, WithLogger(logger))
+
+	var gotConfig appTestConfig
+	var gotLog *slog.Logger
+	var gotContext context.Context
+	var goRan bool
+	started := make(chan struct{})
+
+	app.Root("Run service", func(ctx Context[appTestConfig]) error {
+		gotConfig = ctx.Config
+		gotLog = ctx.Log
+		gotContext = ctx.Context
+		ctx.Go("short task", func(run context.Context) error {
+			goRan = run == ctx.Context
+			close(started)
+			<-run.Done()
+
+			return nil
+		})
+		<-started
+		app.cancel()
+
+		return nil
+	})
+
+	if err := app.RunE("--port", "9090", "--http-host", "0.0.0.0"); err != nil {
+		t.Fatal(err)
+	}
+
+	if gotConfig.Port != 9090 {
+		t.Fatalf("want parsed value config port 9090, got %d", gotConfig.Port)
+	}
+	if gotConfig.HTTP.Host != "0.0.0.0" {
+		t.Fatalf("want parsed nested host, got %q", gotConfig.HTTP.Host)
+	}
+	if gotLog != logger {
+		t.Fatal("want handler context to expose injected logger")
+	}
+	if gotContext == nil {
+		t.Fatal("want handler context to expose application context")
+	}
+	if !goRan {
+		t.Fatal("want ctx.Go to pass the application context")
+	}
+}
+
+func TestContextRuntimeMethodPanicsWithoutApp(t *testing.T) {
+	t.Parallel()
+
+	ctx := Context[appTestConfig]{}
+
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("want panic")
+		}
+		if got != "bee: runtime method called on context not created by App" {
+			t.Fatalf("want clear context runtime panic, got %v", got)
+		}
+	}()
+
+	ctx.Go("manual context", func(context.Context) error {
+		return nil
+	})
+}
+
+func TestAppWithoutCommandsRequiresRoot(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	err := app.RunE()
+	if err == nil {
+		t.Fatal("want missing root error")
+	}
+	if err.Error() != "no root command registered" {
+		t.Fatalf("want missing root error, got %v", err)
+	}
 }
 
 func TestAppCommandParsingAndConfig(t *testing.T) {
 	t.Parallel()
 
-	cfg := &appTestConfig{}
+	cfg := appTestConfig{}
 	output := &bytes.Buffer{}
 	app := newTestApp(t, cfg, output, WithLookupEnvFunc(func(key string) (string, bool) {
 		if key == "MAIA_PORT" {
@@ -51,24 +137,24 @@ func TestAppCommandParsingAndConfig(t *testing.T) {
 	}))
 
 	var ran string
-	app.Command("start", "Run starter", func(app *App[appTestConfig]) error {
+	start := app.Command("start", "Run starter", func(ctx Context[appTestConfig]) error {
 		ran = "start"
 
 		return nil
 	})
-	app.Command("start api", "Run API", func(app *App[appTestConfig]) error {
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
 		ran = "start api"
 
-		if app.Config() != cfg {
-			t.Fatal("Config returned a different pointer")
+		if ctx.Config.Port != 7070 {
+			t.Fatalf("want context config port 7070, got %d", ctx.Config.Port)
 		}
 
-		if app.Log() == nil {
-			t.Fatal("Log returned nil")
+		if ctx.Log == nil {
+			t.Fatal("context Log is nil")
 		}
 
-		if app.Context() == nil {
-			t.Fatal("Context returned nil")
+		if ctx.Context == nil {
+			t.Fatal("context Context is nil")
 		}
 
 		return nil
@@ -82,33 +168,34 @@ func TestAppCommandParsingAndConfig(t *testing.T) {
 		t.Fatalf("want longest command to run start api, got %q", ran)
 	}
 
-	if cfg.Port != 7070 {
-		t.Fatalf("want flag to override env/default with port 7070, got %d", cfg.Port)
+	if app.Config().Port != 7070 {
+		t.Fatalf("want flag to override env/default with port 7070, got %d", app.Config().Port)
 	}
 
-	if cfg.HTTP.Host != "0.0.0.0" {
-		t.Fatalf("want nested flag after command to parse, got %q", cfg.HTTP.Host)
+	if app.Config().HTTP.Host != "0.0.0.0" {
+		t.Fatalf("want nested flag after command to parse, got %q", app.Config().HTTP.Host)
 	}
 
-	if cfg.LogLevel != "INFO" {
-		t.Fatalf("want default log level INFO, got %q", cfg.LogLevel)
+	if app.Config().LogLevel != "INFO" {
+		t.Fatalf("want default log level INFO, got %q", app.Config().LogLevel)
 	}
 }
 
 func TestAppDefaultCommand(t *testing.T) {
 	t.Parallel()
 
-	cfg := &appTestConfig{}
+	cfg := appTestConfig{}
 	output := &bytes.Buffer{}
 	app := newTestApp(t, cfg, output, WithDefaultCommand("start worker"))
 
 	var ran string
-	app.Command("start api", "Run API", func(app *App[appTestConfig]) error {
+	start := app.Command("start", "Run services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
 		ran = "api"
 
 		return nil
 	})
-	app.Command("start worker", "Run worker", func(app *App[appTestConfig]) error {
+	start.Command("worker", "Run worker", func(ctx Context[appTestConfig]) error {
 		ran = "worker"
 
 		return nil
@@ -122,15 +209,211 @@ func TestAppDefaultCommand(t *testing.T) {
 		t.Fatalf("want default worker command, got %q", ran)
 	}
 
-	if cfg.Port != 6060 {
-		t.Fatalf("want flags to parse for default command, got port %d", cfg.Port)
+	if app.Config().Port != 6060 {
+		t.Fatalf("want flags to parse for default command, got port %d", app.Config().Port)
 	}
+}
+
+func TestAppCommandTreeDispatchesNestedCommand(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	var ran string
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
+		ran = "start api"
+
+		return nil
+	})
+	start.Command("worker", "Run worker", func(ctx Context[appTestConfig]) error {
+		ran = "start worker"
+
+		return nil
+	})
+
+	if err := app.RunE("start", "api"); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "start api" {
+		t.Fatalf("want start api, got %q", ran)
+	}
+}
+
+func TestAppCommandTreeAllowsIntermediateHandler(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	var ran string
+	start := app.Command("start", "Start services", func(ctx Context[appTestConfig]) error {
+		ran = "start"
+
+		return nil
+	})
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
+		ran = "start api"
+
+		return nil
+	})
+
+	if err := app.RunE("start"); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "start" {
+		t.Fatalf("want intermediate start handler, got %q", ran)
+	}
+}
+
+func TestAppCommandTreeRejectsDuplicateSibling(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error { return nil })
+
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("want duplicate sibling panic")
+		}
+		if !strings.Contains(fmt.Sprint(got), `duplicate command "api"`) {
+			t.Fatalf("want duplicate command panic, got %v", got)
+		}
+	}()
+
+	start.Command("api", "Run API again", func(ctx Context[appTestConfig]) error { return nil })
+}
+
+func TestAppCommandTreeRejectsInvalidName(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{"", "start api", " start ", "\t"}
+	for _, name := range tests {
+		name := name
+		t.Run(fmt.Sprintf("%q", name), func(t *testing.T) {
+			t.Parallel()
+
+			app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+			defer func() {
+				got := recover()
+				if got == nil {
+					t.Fatal("want invalid command name panic")
+				}
+				if !strings.Contains(fmt.Sprint(got), "invalid command name") {
+					t.Fatalf("want invalid command name panic, got %v", got)
+				}
+			}()
+
+			app.Command(name, "Bad command")
+		})
+	}
+}
+
+func TestAppCommandTreeUnknownCommandShowsUsage(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+	app.Command("start", "Start services").
+		Command("api", "Run API", func(ctx Context[appTestConfig]) error { return nil })
+	app.Command("migrate", "Run migrations", func(ctx Context[appTestConfig]) error { return nil })
+
+	err := app.RunE("start", "sender")
+	if err == nil {
+		t.Fatal("want unknown command error")
+	}
+	if err.Error() != `unknown command "start sender"` {
+		t.Fatalf("want unknown nested command error, got %v", err)
+	}
+
+	got := output.String()
+	for _, want := range []string{"Commands:", "start api", "migrate"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("want usage to contain %q, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestAppCommandTreeDefaultCommand(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output, WithDefaultCommand("start worker"))
+
+	var ran string
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
+		ran = "api"
+
+		return nil
+	})
+	start.Command("worker", "Run worker", func(ctx Context[appTestConfig]) error {
+		ran = "worker"
+
+		return nil
+	})
+
+	if err := app.RunE("--port", "6060"); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "worker" {
+		t.Fatalf("want default worker command, got %q", ran)
+	}
+}
+
+func TestAppCommandGroupHelpListsChildren(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error { return nil })
+	start.Command("worker", "Run worker", func(ctx Context[appTestConfig]) error { return nil })
+
+	if err := app.RunE("start", "--help"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := output.String()
+	for _, want := range []string{
+		"Usage of maia start:",
+		"Start services",
+		"Commands:",
+		"start api",
+		"start worker",
+		"Run API",
+		"Run worker",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("want group help to contain %q, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestCommandRuntimeMethodPanicsWithoutApp(t *testing.T) {
+	t.Parallel()
+
+	var cmd Command[appTestConfig]
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("want panic")
+		}
+		if got != "bee: command method called on command not created by App" {
+			t.Fatalf("want clear command runtime panic, got %v", got)
+		}
+	}()
+
+	cmd.Command("api", "Run API")
 }
 
 func TestAppHTTPServerShutsDownWhenContextIsCancelled(t *testing.T) {
 	t.Parallel()
 
-	cfg := &appTestConfig{}
+	cfg := appTestConfig{}
 	output := &bytes.Buffer{}
 	app := newTestApp(t, cfg, output)
 	app.timeout = 50 * time.Millisecond
@@ -142,8 +425,8 @@ func TestAppHTTPServerShutsDownWhenContextIsCancelled(t *testing.T) {
 		}),
 	}
 
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.HTTPServer("http server", server)
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.HTTPServer("http server", server)
 		app.cancel()
 
 		return nil
@@ -154,11 +437,128 @@ func TestAppHTTPServerShutsDownWhenContextIsCancelled(t *testing.T) {
 	}
 }
 
+func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+	app.timeout = time.Second
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := probe.Addr().String()
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	requestStarted := make(chan struct{})
+	allowRequestFinish := make(chan struct{})
+	events := make(chan string, 4)
+	clientDone := make(chan error, 1)
+	exitCalled := make(chan struct{})
+
+	server := &http.Server{
+		Addr: addr,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			close(requestStarted)
+			<-allowRequestFinish
+			events <- "handler finished"
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+
+	app.Root("Run service", func(ctx Context[appTestConfig]) error {
+		ctx.HTTPServer("http api", server)
+		ctx.Register("database", func(context.Context) error {
+			events <- "database closed"
+
+			return nil
+		})
+		ctx.Register("queue", func(context.Context) error {
+			events <- "queue closed"
+
+			return nil
+		})
+
+		go func() {
+			resp, err := http.Get("http://" + addr)
+			if err != nil {
+				clientDone <- err
+
+				return
+			}
+			_ = resp.Body.Close()
+			clientDone <- nil
+		}()
+
+		select {
+		case <-requestStarted:
+		case <-time.After(time.Second):
+			return errors.New("timed out waiting for request to start")
+		}
+
+		ctx.Exit("stop", nil)
+		close(exitCalled)
+
+		return nil
+	})
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- app.RunE()
+	}()
+
+	select {
+	case <-exitCalled:
+	case err := <-runDone:
+		t.Fatalf("RunE returned before request started: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for ctx.Exit")
+	}
+
+	select {
+	case event := <-events:
+		t.Fatalf("closer ran before handler was allowed to finish: %s", event)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(allowRequestFinish)
+
+	select {
+	case err := <-clientDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for client")
+	}
+
+	select {
+	case err = <-runDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for app shutdown")
+	}
+	if err == nil {
+		t.Fatal("want ctx.Exit to record an exit error")
+	}
+
+	got := []string{
+		receiveString(t, events, time.Second, "handler finish event"),
+		receiveString(t, events, time.Second, "queue closer event"),
+		receiveString(t, events, time.Second, "database closer event"),
+	}
+	want := []string{"handler finished", "queue closed", "database closed"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("want shutdown order %v, got %v", want, got)
+	}
+}
+
 func TestAppDuplicateCommandPanicsClearly(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
-	app.Command(" start   api ", "Run API", func(app *App[appTestConfig]) error {
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	app.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
 
@@ -168,12 +568,12 @@ func TestAppDuplicateCommandPanicsClearly(t *testing.T) {
 			t.Fatal("want duplicate command panic")
 		}
 
-		if !strings.Contains(got.(string), `duplicate command "start api"`) {
+		if !strings.Contains(fmt.Sprint(got), `duplicate command "api"`) {
 			t.Fatalf("want clear duplicate command panic, got %v", got)
 		}
 	}()
 
-	app.Command("start api", "Run API again", func(app *App[appTestConfig]) error {
+	app.Command("api", "Run API again", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
 }
@@ -182,11 +582,11 @@ func TestAppUnknownCommandShowsUsage(t *testing.T) {
 	t.Parallel()
 
 	output := &bytes.Buffer{}
-	app := newTestApp(t, &appTestConfig{}, output)
-	app.Command("start api", "Run API", func(app *App[appTestConfig]) error {
+	app := newTestApp(t, appTestConfig{}, output)
+	app.Command("start", "Start services").Command("api", "Run API", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
-	app.Command("migrate", "Run migrations", func(app *App[appTestConfig]) error {
+	app.Command("migrate", "Run migrations", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
 
@@ -211,11 +611,12 @@ func TestAppHelpListsCommandsAndFlags(t *testing.T) {
 	t.Parallel()
 
 	output := &bytes.Buffer{}
-	app := newTestApp(t, &appTestConfig{}, output, WithDefaultCommand("start api"))
-	app.Command("start api", "Run API", func(app *App[appTestConfig]) error {
+	app := newTestApp(t, appTestConfig{}, output, WithDefaultCommand("start api"))
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run API", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
-	app.Command("start worker", "Run worker", func(app *App[appTestConfig]) error {
+	start.Command("worker", "Run worker", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
 
@@ -243,8 +644,8 @@ func TestAppCommandHelpListsSelectedCommandAndFlags(t *testing.T) {
 	t.Parallel()
 
 	output := &bytes.Buffer{}
-	app := newTestApp(t, &appTestConfig{}, output)
-	app.Command("start worker", "Run worker", func(app *App[appTestConfig]) error {
+	app := newTestApp(t, appTestConfig{}, output)
+	app.Command("start", "Start services").Command("worker", "Run worker", func(ctx Context[appTestConfig]) error {
 		return nil
 	})
 
@@ -268,12 +669,12 @@ func TestAppCommandHelpListsSelectedCommandAndFlags(t *testing.T) {
 func TestAppRootCommand(t *testing.T) {
 	t.Parallel()
 
-	cfg := &appTestConfig{}
+	cfg := appTestConfig{}
 	output := &bytes.Buffer{}
 	app := newTestApp(t, cfg, output)
 
 	var ran bool
-	app.Root("Run app", func(app *App[appTestConfig]) error {
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
 		ran = true
 
 		return nil
@@ -287,8 +688,8 @@ func TestAppRootCommand(t *testing.T) {
 		t.Fatal("want root handler to run")
 	}
 
-	if cfg.Port != 9091 {
-		t.Fatalf("want root flags parsed, got %d", cfg.Port)
+	if app.Config().Port != 9091 {
+		t.Fatalf("want root flags parsed, got %d", app.Config().Port)
 	}
 }
 
@@ -296,8 +697,8 @@ func TestAppRunEReturnsConfigParseError(t *testing.T) {
 	t.Parallel()
 
 	cfg := []string{}
-	app := New("maia", &cfg, WithOutput(io.Discard), WithErrorHandling(flag.ContinueOnError))
-	app.Root("Run app", func(app *App[[]string]) error {
+	app := New("maia", cfg, WithOutput(io.Discard), WithErrorHandling(flag.ContinueOnError))
+	app.Root("Run app", func(ctx Context[[]string]) error {
 		return nil
 	})
 
@@ -310,12 +711,12 @@ func TestAppRunEReturnsConfigParseError(t *testing.T) {
 func TestAppContextCancelledOnSignal(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	entered := make(chan struct{})
 	done := make(chan struct{})
-	app.Root("Run app", func(app *App[appTestConfig]) error {
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
 		close(entered)
-		<-app.Context().Done()
+		<-ctx.Context.Done()
 		close(done)
 
 		return nil
@@ -343,17 +744,17 @@ func TestAppContextCancelledOnSignal(t *testing.T) {
 func TestAppGoReceivesAppContextAndFailsFast(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	boom := errors.New("boom")
 	gotContext := make(chan bool, 1)
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.Go("worker", func(ctx context.Context) error {
-			gotContext <- ctx == app.Context()
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.Go("worker", func(run context.Context) error {
+			gotContext <- run == ctx.Context
 
 			return boom
 		})
 
-		<-app.Context().Done()
+		<-ctx.Context.Done()
 
 		return nil
 	})
@@ -379,11 +780,11 @@ func TestAppGoReceivesAppContextAndFailsFast(t *testing.T) {
 func TestAppGoExitsCleanlyOnContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	stopped := make(chan struct{})
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.Go("worker", func(ctx context.Context) error {
-			<-ctx.Done()
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.Go("worker", func(run context.Context) error {
+			<-run.Done()
 			close(stopped)
 
 			return nil
@@ -408,29 +809,29 @@ func TestAppGoExitsCleanlyOnContextCancellation(t *testing.T) {
 func TestAppClosersRunAfterGoroutinesStopInReverseOrder(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	var calls []string
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.Register("first", func(ctx context.Context) error {
-			if ctx.Err() != nil {
-				t.Fatalf("first closer got cancelled shutdown context: %v", ctx.Err())
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.Register("first", func(run context.Context) error {
+			if run.Err() != nil {
+				t.Fatalf("first closer got cancelled shutdown context: %v", run.Err())
 			}
 
 			calls = append(calls, "first")
 
 			return nil
 		})
-		app.Register("second", func(ctx context.Context) error {
-			if ctx.Err() != nil {
-				t.Fatalf("second closer got cancelled shutdown context: %v", ctx.Err())
+		ctx.Register("second", func(run context.Context) error {
+			if run.Err() != nil {
+				t.Fatalf("second closer got cancelled shutdown context: %v", run.Err())
 			}
 
 			calls = append(calls, "second")
 
 			return errors.New("close second")
 		})
-		app.Go("worker", func(ctx context.Context) error {
-			<-ctx.Done()
+		ctx.Go("worker", func(run context.Context) error {
+			<-run.Done()
 			calls = append(calls, "worker stopped")
 
 			return nil
@@ -459,9 +860,9 @@ func TestAppClosersRunAfterGoroutinesStopInReverseOrder(t *testing.T) {
 func TestAppExitRecordsFatalError(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.Exit("fatal stop", nil)
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.Exit("fatal stop", nil)
 
 		return nil
 	})
@@ -479,11 +880,11 @@ func TestAppExitRecordsFatalError(t *testing.T) {
 func TestAppCommandSetupErrorRunsRegisteredClosers(t *testing.T) {
 	t.Parallel()
 
-	app := newTestApp(t, &appTestConfig{}, &bytes.Buffer{})
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
 	setupErr := errors.New("setup failed")
 	var closed bool
-	app.Root("Run app", func(app *App[appTestConfig]) error {
-		app.Register("resource", func(ctx context.Context) error {
+	app.Root("Run app", func(ctx Context[appTestConfig]) error {
+		ctx.Register("resource", func(run context.Context) error {
 			closed = true
 
 			return nil
@@ -499,6 +900,19 @@ func TestAppCommandSetupErrorRunsRegisteredClosers(t *testing.T) {
 
 	if !closed {
 		t.Fatal("registered closer did not run after setup error")
+	}
+}
+
+func receiveString(t *testing.T, ch <-chan string, timeout time.Duration, name string) string {
+	t.Helper()
+
+	select {
+	case value := <-ch:
+		return value
+	case <-time.After(timeout):
+		t.Fatalf("timed out waiting for %s", name)
+
+		return ""
 	}
 }
 

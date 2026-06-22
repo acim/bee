@@ -139,14 +139,19 @@ func TestWithLogLevel(t *testing.T) {
 func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
 	t.Parallel()
 
-	app := New("test", &struct{}{}, WithOutput(io.Discard), WithErrorHandling(flag.ContinueOnError))
+	app := New(
+		"test",
+		struct{}{},
+		WithOutput(io.Discard),
+		WithErrorHandling(flag.ContinueOnError),
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+	)
 	app.timeout = 100 * time.Millisecond
-	app.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var calls []string
-	app.Root("Run app", func(app *App[struct{}]) error {
-		app.Register("first", func(ctx context.Context) error {
-			if err := ctx.Err(); err != nil {
+	app.Root("Run app", func(ctx Context[struct{}]) error {
+		ctx.Register("first", func(run context.Context) error {
+			if err := run.Err(); err != nil {
 				t.Fatalf("first closer got expired context: %v", err)
 			}
 
@@ -154,8 +159,8 @@ func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
 
 			return nil
 		})
-		app.Register("second", func(ctx context.Context) error {
-			if err := ctx.Err(); err != nil {
+		ctx.Register("second", func(run context.Context) error {
+			if err := run.Err(); err != nil {
 				t.Fatalf("second closer got expired context: %v", err)
 			}
 
@@ -183,8 +188,8 @@ func TestAppNewWithUsage(t *testing.T) {
 	t.Parallel()
 
 	var output bytes.Buffer
-	app := New("test", &struct{}{}, WithOutput(&output), WithUsage("parent"), WithErrorHandling(flag.ContinueOnError))
-	app.Root("Run app", func(app *App[struct{}]) error {
+	app := New("test", struct{}{}, WithOutput(&output), WithUsage("parent"), WithErrorHandling(flag.ContinueOnError))
+	app.Root("Run app", func(ctx Context[struct{}]) error {
 		return nil
 	})
 

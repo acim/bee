@@ -5,13 +5,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/iancoleman/strcase"
 )
+
+var durationType = reflect.TypeOf(time.Duration(0))
 
 // Errors.
 var (
@@ -51,6 +56,7 @@ func newCommandLine(name string) *commandLine {
 
 func (cl *commandLine) parse(config any, flags []string) error {
 	cl.required = nil
+	cl.help = false
 
 	if err := cl.subParse(config, flags, ""); err != nil {
 		return cl.exit(err)
@@ -60,7 +66,15 @@ func (cl *commandLine) parse(config any, flags []string) error {
 		return cl.exit(err)
 	}
 
-	return cl.exit(cl.validateRequired())
+	if err := cl.validateRequired(); err != nil {
+		return cl.exit(err)
+	}
+
+	if err := cl.validate(config); err != nil {
+		return cl.exit(err)
+	}
+
+	return nil
 }
 
 func (cl *commandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
@@ -187,6 +201,475 @@ func (cl *commandLine) validateRequired() error {
 	}
 
 	return nil
+}
+
+func (cl *commandLine) validate(config any) error {
+	if cl.help {
+		return nil
+	}
+
+	v := reflect.ValueOf(config)
+	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct {
+		return ErrInvalidConfigType
+	}
+
+	return cl.validateStruct(v.Elem())
+}
+
+func (cl *commandLine) validateStruct(v reflect.Value) error {
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		value := v.Field(i)
+		if field.PkgPath != "" {
+			return ErrInvalidConfigType
+		}
+
+		if value.Kind() == reflect.Struct && !isSpecialStructValue(value) {
+			if err := cl.validateStruct(value); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		if err := cl.validateField(field, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isSpecialStructValue(v reflect.Value) bool {
+	if !v.CanAddr() {
+		return false
+	}
+
+	switch v.Addr().Interface().(type) {
+	case *URL, *Time:
+		return true
+	default:
+		return false
+	}
+}
+
+func (cl *commandLine) validateField(field reflect.StructField, value reflect.Value) error {
+	if err := validateMinMax(field, value); err != nil {
+		return err
+	}
+
+	if err := validateOneOf(field, value); err != nil {
+		return err
+	}
+
+	if err := validateLengths(field, value); err != nil {
+		return err
+	}
+
+	if err := validateRegex(field, value); err != nil {
+		return err
+	}
+
+	if err := validatePrefixSuffix(field, value); err != nil {
+		return err
+	}
+
+	if err := validateNonzero(field, value); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateMinMax(field reflect.StructField, value reflect.Value) error {
+	if min := field.Tag.Get("min"); min != "" {
+		if err := compareMinimum(field, value, min); err != nil {
+			return err
+		}
+	}
+
+	if max := field.Tag.Get("max"); max != "" {
+		if err := compareMaximum(field, value, max); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func compareMinimum(field reflect.StructField, value reflect.Value, min string) error { //nolint:cyclop
+	if value.Type() == durationType {
+		limit, err := time.ParseDuration(min)
+		if err != nil {
+			return fmt.Errorf("%s min: parsing duration %q: %w", field.Name, min, err)
+		}
+
+		got := value.Interface().(time.Duration)
+		if got < limit {
+			return fmt.Errorf("%s min: value %s must be >= %s", field.Name, got, limit)
+		}
+
+		return nil
+	}
+
+	switch value.Kind() { //nolint:exhaustive
+	case reflect.Int, reflect.Int64:
+		limit, err := strconv.ParseInt(min, 10, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s min: parsing int %q: %w", field.Name, min, err)
+		}
+
+		got := value.Int()
+		if got < limit {
+			return fmt.Errorf("%s min: value %d must be >= %d", field.Name, got, limit)
+		}
+	case reflect.Uint, reflect.Uint64:
+		limit, err := strconv.ParseUint(min, 10, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s min: parsing uint %q: %w", field.Name, min, err)
+		}
+
+		got := value.Uint()
+		if got < limit {
+			return fmt.Errorf("%s min: value %d must be >= %d", field.Name, got, limit)
+		}
+	case reflect.Float64:
+		limit, err := strconv.ParseFloat(min, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s min: parsing float %q: %w", field.Name, min, err)
+		}
+
+		got := value.Float()
+		if math.IsNaN(got) {
+			return fmt.Errorf("%s min: value NaN must be a number", field.Name)
+		}
+
+		if got < limit {
+			return fmt.Errorf("%s min: value %g must be >= %g", field.Name, got, limit)
+		}
+	default:
+		return fmt.Errorf("%s min: unsupported type %s", field.Name, value.Type())
+	}
+
+	return nil
+}
+
+func compareMaximum(field reflect.StructField, value reflect.Value, max string) error { //nolint:cyclop
+	if value.Type() == durationType {
+		limit, err := time.ParseDuration(max)
+		if err != nil {
+			return fmt.Errorf("%s max: parsing duration %q: %w", field.Name, max, err)
+		}
+
+		got := value.Interface().(time.Duration)
+		if got > limit {
+			return fmt.Errorf("%s max: value %s must be <= %s", field.Name, got, limit)
+		}
+
+		return nil
+	}
+
+	switch value.Kind() { //nolint:exhaustive
+	case reflect.Int, reflect.Int64:
+		limit, err := strconv.ParseInt(max, 10, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s max: parsing int %q: %w", field.Name, max, err)
+		}
+
+		got := value.Int()
+		if got > limit {
+			return fmt.Errorf("%s max: value %d must be <= %d", field.Name, got, limit)
+		}
+	case reflect.Uint, reflect.Uint64:
+		limit, err := strconv.ParseUint(max, 10, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s max: parsing uint %q: %w", field.Name, max, err)
+		}
+
+		got := value.Uint()
+		if got > limit {
+			return fmt.Errorf("%s max: value %d must be <= %d", field.Name, got, limit)
+		}
+	case reflect.Float64:
+		limit, err := strconv.ParseFloat(max, 64) //nolint:gomnd
+		if err != nil {
+			return fmt.Errorf("%s max: parsing float %q: %w", field.Name, max, err)
+		}
+
+		got := value.Float()
+		if math.IsNaN(got) {
+			return fmt.Errorf("%s max: value NaN must be a number", field.Name)
+		}
+
+		if got > limit {
+			return fmt.Errorf("%s max: value %g must be <= %g", field.Name, got, limit)
+		}
+	default:
+		return fmt.Errorf("%s max: unsupported type %s", field.Name, value.Type())
+	}
+
+	return nil
+}
+
+func validateOneOf(field reflect.StructField, value reflect.Value) error {
+	tag, ok := field.Tag.Lookup("oneof")
+	if !ok {
+		return nil
+	}
+
+	allowed, err := requireTagList(field, "oneof", tag)
+	if err != nil {
+		return err
+	}
+
+	got := validationString(value)
+	for _, option := range allowed {
+		if got == option {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s oneof: value %q must be one of %s", field.Name, got, strings.Join(allowed, ", "))
+}
+
+func validateLengths(field reflect.StructField, value reflect.Value) error {
+	for _, tag := range []string{"len", "minlen", "maxlen"} {
+		limit, ok, err := validationLength(field, tag)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			continue
+		}
+
+		got, ok := lengthValue(value)
+		if !ok {
+			return fmt.Errorf("%s %s: unsupported type %s", field.Name, tag, value.Type())
+		}
+
+		switch tag {
+		case "len":
+			if got != limit {
+				return fmt.Errorf("%s len: length %d must equal %d", field.Name, got, limit)
+			}
+		case "minlen":
+			if got < limit {
+				return fmt.Errorf("%s minlen: length %d must be >= %d", field.Name, got, limit)
+			}
+		case "maxlen":
+			if got > limit {
+				return fmt.Errorf("%s maxlen: length %d must be <= %d", field.Name, got, limit)
+			}
+		}
+	}
+
+	return nil
+}
+
+func validationLength(field reflect.StructField, tag string) (int, bool, error) {
+	raw, ok := field.Tag.Lookup(tag)
+	if !ok {
+		return 0, false, nil
+	}
+
+	limit, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, true, fmt.Errorf("%s %s: parsing length %q: %w", field.Name, tag, raw, err)
+	}
+
+	return limit, true, nil
+}
+
+func lengthValue(value reflect.Value) (int, bool) {
+	switch value.Kind() { //nolint:exhaustive
+	case reflect.String:
+		return value.Len(), true
+	case reflect.Slice:
+		switch value.Interface().(type) {
+		case StringSlice, IntSlice:
+			return value.Len(), true
+		default:
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+}
+
+func validateRegex(field reflect.StructField, value reflect.Value) error {
+	pattern, ok := field.Tag.Lookup("regex")
+	if !ok {
+		return nil
+	}
+
+	if value.Kind() != reflect.String {
+		return fmt.Errorf("%s regex: unsupported type %s", field.Name, value.Type())
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Errorf("%s regex: compiling %q: %w", field.Name, pattern, err)
+	}
+
+	got := value.String()
+	if !re.MatchString(got) {
+		return fmt.Errorf("%s regex: value %q must match %s", field.Name, got, pattern)
+	}
+
+	return nil
+}
+
+func validatePrefixSuffix(field reflect.StructField, value reflect.Value) error {
+	got, ok := stringLikeValue(value)
+
+	if tag, present := field.Tag.Lookup("prefix"); present {
+		if !ok {
+			return fmt.Errorf("%s prefix: unsupported type %s", field.Name, value.Type())
+		}
+
+		prefixes, err := requireTagList(field, "prefix", tag)
+		if err != nil {
+			return err
+		}
+
+		if !hasAnyPrefix(got, prefixes) {
+			return fmt.Errorf("%s prefix: value %q must start with one of %s", field.Name, got, strings.Join(prefixes, ", "))
+		}
+	}
+
+	if tag, present := field.Tag.Lookup("suffix"); present {
+		if !ok {
+			return fmt.Errorf("%s suffix: unsupported type %s", field.Name, value.Type())
+		}
+
+		suffixes, err := requireTagList(field, "suffix", tag)
+		if err != nil {
+			return err
+		}
+
+		if !hasAnySuffix(got, suffixes) {
+			return fmt.Errorf("%s suffix: value %q must end with one of %s", field.Name, got, strings.Join(suffixes, ", "))
+		}
+	}
+
+	return nil
+}
+
+func stringLikeValue(value reflect.Value) (string, bool) {
+	if value.Kind() == reflect.String {
+		return value.String(), true
+	}
+
+	if value.CanAddr() {
+		if v, ok := value.Addr().Interface().(*URL); ok {
+			return v.String(), true
+		}
+	}
+
+	return "", false
+}
+
+func hasAnyPrefix(value string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasAnySuffix(value string, suffixes []string) bool {
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(value, suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func validateNonzero(field reflect.StructField, value reflect.Value) error {
+	if _, ok := field.Tag.Lookup("nonzero"); !ok {
+		return nil
+	}
+
+	if value.CanAddr() {
+		switch v := value.Addr().Interface().(type) {
+		case *URL:
+			if v == nil || v.URL == nil || v.String() == "" {
+				return fmt.Errorf("%s nonzero: value must not be zero", field.Name)
+			}
+
+			return nil
+		case *Time:
+			if v == nil || v.Time == nil || v.Time.IsZero() {
+				return fmt.Errorf("%s nonzero: value must not be zero", field.Name)
+			}
+
+			return nil
+		}
+	}
+
+	if value.IsZero() {
+		return fmt.Errorf("%s nonzero: value must not be zero", field.Name)
+	}
+
+	return nil
+}
+
+func requireTagList(field reflect.StructField, tagName string, raw string) ([]string, error) {
+	values := splitTagList(raw)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%s %s: empty value list", field.Name, tagName)
+	}
+
+	return values, nil
+}
+
+func splitTagList(tag string) []string {
+	parts := strings.Split(tag, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+
+	return values
+}
+
+func validationString(value reflect.Value) string {
+	if value.Type() == durationType {
+		return value.Interface().(time.Duration).String()
+	}
+
+	if value.CanAddr() {
+		switch v := value.Addr().Interface().(type) {
+		case *URL:
+			return v.String()
+		case *Time:
+			return v.String()
+		}
+	}
+
+	switch value.Kind() { //nolint:exhaustive
+	case reflect.String:
+		return value.String()
+	case reflect.Bool:
+		return strconv.FormatBool(value.Bool())
+	case reflect.Int, reflect.Int64:
+		return strconv.FormatInt(value.Int(), 10)
+	case reflect.Uint, reflect.Uint64:
+		return strconv.FormatUint(value.Uint(), 10)
+	case reflect.Float64:
+		return strconv.FormatFloat(value.Float(), 'g', -1, 64) //nolint:gomnd
+	default:
+		return fmt.Sprint(value.Interface())
+	}
 }
 
 func (cl *commandLine) validateFlagName(flagName string) error {

@@ -3,6 +3,7 @@ package bee_test
 import (
 	"flag"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -25,7 +26,7 @@ func Example_basic() {
 		Start bee.Time
 	}
 
-	cfg := &config{} //nolint:exhaustruct
+	cfg := config{} //nolint:exhaustruct
 
 	args := os.Args
 	defer func() {
@@ -39,7 +40,7 @@ func Example_basic() {
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(app *bee.App[config]) error {
+	app.Root("Run app", func(ctx bee.Context[config]) error {
 		return nil
 	})
 	_ = app.RunE()
@@ -72,7 +73,7 @@ func Example_advanced() {
 		Start bee.Time `def:"2002-10-02T10:00:00-05:00"`
 	}
 
-	cfg := &config{} //nolint:exhaustruct
+	cfg := config{} //nolint:exhaustruct
 
 	args := os.Args
 	defer func() {
@@ -86,10 +87,51 @@ func Example_advanced() {
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
 	)
-	app.Root("Run app", func(app *bee.App[config]) error {
+	app.Root("Run app", func(ctx bee.Context[config]) error {
 		return nil
 	})
 	_ = app.RunE()
+
+	// Output:
+}
+
+func Example_commandTree() {
+	type config struct {
+		HTTP struct {
+			Addr string `def:":8080"`
+		}
+	}
+
+	args := os.Args
+	defer func() {
+		os.Args = args
+	}()
+	os.Args = []string{"maia", "start", "api"}
+
+	app := bee.New(
+		"maia",
+		config{}, //nolint:exhaustruct
+		bee.WithErrorHandling(flag.ContinueOnError),
+		bee.WithOutput(io.Discard),
+		bee.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+	)
+
+	start := app.Command("start", "Start services")
+	start.Command("api", "Run HTTP API", func(ctx bee.Context[config]) error {
+		ctx.Log.Info("api starting", "addr", ctx.Config.HTTP.Addr)
+
+		return nil
+	})
+	start.Command("worker", "Run worker", func(ctx bee.Context[config]) error {
+		return nil
+	})
+
+	app.Command("migrate", "Run migrations").
+		Command("up", "Apply migrations", func(ctx bee.Context[config]) error {
+			return nil
+		})
+
+	_ = app.RunE(os.Args[1:]...)
 
 	// Output:
 }

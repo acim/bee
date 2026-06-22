@@ -269,6 +269,70 @@ func TestPanicOnErrorPanics(t *testing.T) {
 	_ = cl.exit(flag.ErrHelp)
 }
 
+func TestParseValidationExitOnErrorWritesAndExits(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	code := captureExit(t, func() {
+		cl := newCommandLine("test")
+		cl.output = output
+		cl.flagSet.SetOutput(output)
+		cl.errorHandling = flag.ExitOnError
+
+		_ = cl.parse(&struct {
+			Port int `max:"10"`
+		}{}, []string{"--port", "11"})
+	})
+
+	if code != 2 {
+		t.Fatalf("want exit code 2, got %d", code)
+	}
+	if !strings.Contains(output.String(), "bee: Port max: value 11 must be <= 10") {
+		t.Fatalf("want validation error in output, got %q", output.String())
+	}
+}
+
+func TestParseValidationPanicOnErrorPanics(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.PanicOnError
+
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("want validation panic")
+		}
+		if fmt.Sprint(got) != `Port max: value 11 must be <= 10` {
+			t.Fatalf("want validation panic, got %v", got)
+		}
+	}()
+
+	_ = cl.parse(&struct {
+		Port int `max:"10"`
+	}{}, []string{"--port", "11"})
+}
+
+func TestParseHelpBypassesValidation(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	cl := newCommandLine("test")
+	cl.output = output
+	cl.flagSet.SetOutput(output)
+	cl.errorHandling = flag.ContinueOnError
+
+	err := cl.parse(&struct {
+		DatabaseURL string `req:"" nonzero:"" prefix:"postgres://"`
+		Port        int    `min:"1"`
+	}{}, []string{"--help"})
+
+	assertError(t, err, "")
+	if !strings.Contains(output.String(), "-database-url") {
+		t.Fatalf("want help output, got %q", output.String())
+	}
+}
+
 func TestParse_usage(t *testing.T) { //nolint:funlen
 	t.Parallel()
 
@@ -579,6 +643,312 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 			}
 		})
 	}
+}
+
+func TestParseValidationMinMax(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"int below min": {
+			cfg: &struct {
+				Port int `min:"1"`
+			}{},
+			flags:   []string{"--port", "0"},
+			wantErr: `Port min: value 0 must be >= 1`,
+		},
+		"uint above max": {
+			cfg: &struct {
+				Workers uint `max:"4"`
+			}{},
+			flags:   []string{"--workers", "5"},
+			wantErr: `Workers max: value 5 must be <= 4`,
+		},
+		"float valid": {
+			cfg: &struct {
+				Rate float64 `min:"0" max:"1"`
+			}{},
+			flags: []string{"--rate", "0.5"},
+		},
+		"duration below min": {
+			cfg: &struct {
+				Timeout time.Duration `min:"100ms"`
+			}{},
+			flags:   []string{"--timeout", "50ms"},
+			wantErr: `Timeout min: value 50ms must be >= 100ms`,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValidationOneOf(t *testing.T) {
+	t.Parallel()
+
+	cfg := &struct {
+		Env     string        `oneof:"dev, staging, prod"`
+		Port    int           `oneof:"80,443,8080"`
+		Timeout time.Duration `oneof:"1s, 5s"`
+	}{}
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	err := cl.parse(cfg, []string{"--env", "qa", "--port", "80", "--timeout", "1s"})
+	assertError(t, err, `Env oneof: value "qa" must be one of dev, staging, prod`)
+}
+
+func TestParseValidationLengthTags(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"string len": {
+			cfg: &struct {
+				Token string `len:"4"`
+			}{},
+			flags:   []string{"--token", "abc"},
+			wantErr: `Token len: length 3 must equal 4`,
+		},
+		"string minlen": {
+			cfg: &struct {
+				Name string `minlen:"3"`
+			}{},
+			flags:   []string{"--name", "ab"},
+			wantErr: `Name minlen: length 2 must be >= 3`,
+		},
+		"string maxlen": {
+			cfg: &struct {
+				Name string `maxlen:"3"`
+			}{},
+			flags:   []string{"--name", "abcd"},
+			wantErr: `Name maxlen: length 4 must be <= 3`,
+		},
+		"string slice valid": {
+			cfg: &struct {
+				Hosts StringSlice `minlen:"1" maxlen:"2"`
+			}{},
+			flags: []string{"--hosts", "api-1,api-2"},
+		},
+		"int slice maxlen": {
+			cfg: &struct {
+				Ports IntSlice `maxlen:"1"`
+			}{},
+			flags:   []string{"--ports", "8080,8081"},
+			wantErr: `Ports maxlen: length 2 must be <= 1`,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValidationStringLikeTags(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"regex mismatch": {
+			cfg: &struct {
+				Name string `regex:"^[a-z][a-z0-9-]*$"`
+			}{},
+			flags:   []string{"--name", "Bad_Name"},
+			wantErr: `Name regex: value "Bad_Name" must match ^[a-z][a-z0-9-]*$`,
+		},
+		"prefix string": {
+			cfg: &struct {
+				Topic string `prefix:"maia., bee."`
+			}{},
+			flags:   []string{"--topic", "other.events"},
+			wantErr: `Topic prefix: value "other.events" must start with one of maia., bee.`,
+		},
+		"suffix string": {
+			cfg: &struct {
+				File string `suffix:".json, .yaml"`
+			}{},
+			flags:   []string{"--file", "config.toml"},
+			wantErr: `File suffix: value "config.toml" must end with one of .json, .yaml`,
+		},
+		"prefix url valid": {
+			cfg: &struct {
+				Database URL `prefix:"postgres://, postgresql://"`
+			}{},
+			flags: []string{"--database", "postgres://localhost/db"},
+		},
+		"nonzero string": {
+			cfg: &struct {
+				Addr string `nonzero:""`
+			}{},
+			flags:   []string{},
+			wantErr: `Addr nonzero: value must not be zero`,
+		},
+		"nonzero int": {
+			cfg: &struct {
+				Port int `nonzero:""`
+			}{},
+			flags:   []string{},
+			wantErr: `Port nonzero: value must not be zero`,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValidationNonzeroSpecialTypes(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"url empty": {
+			cfg: &struct {
+				Database URL `nonzero:""`
+			}{},
+			flags:   []string{"--database", ""},
+			wantErr: `Database nonzero: value must not be zero`,
+		},
+		"time zero default": {
+			cfg: &struct {
+				Start Time `nonzero:""`
+			}{},
+			flags:   []string{},
+			wantErr: `Start nonzero: value must not be zero`,
+		},
+		"time zero flag": {
+			cfg: &struct {
+				Start Time `nonzero:""`
+			}{},
+			flags:   []string{"--start", "0001-01-01T00:00:00Z"},
+			wantErr: `Start nonzero: value must not be zero`,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValidationRejectsEmptyLists(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		cfg     any
+		flags   []string
+		wantErr string
+	}{
+		"oneof": {
+			cfg: &struct {
+				Env string `oneof:""`
+			}{},
+			flags:   []string{"--env", "dev"},
+			wantErr: `Env oneof: empty value list`,
+		},
+		"prefix": {
+			cfg: &struct {
+				Topic string `prefix:""`
+			}{},
+			flags:   []string{"--topic", "maia.events"},
+			wantErr: `Topic prefix: empty value list`,
+		},
+		"suffix": {
+			cfg: &struct {
+				File string `suffix:""`
+			}{},
+			flags:   []string{"--file", "config.json"},
+			wantErr: `File suffix: empty value list`,
+		},
+	}
+
+	for name, tt := range tests {
+		name := name
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+			cl.errorHandling = flag.ContinueOnError
+			err := cl.parse(tt.cfg, tt.flags)
+			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValidationMinMaxRejectsNaN(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	err := cl.parse(&struct {
+		Rate float64 `min:"0" max:"1"`
+	}{}, []string{"--rate", "NaN"})
+
+	assertError(t, err, `Rate min: value NaN must be a number`)
+}
+
+func TestParseValidationMinMaxRejectsUnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	cl.errorHandling = flag.ContinueOnError
+
+	err := cl.parse(&struct {
+		Name string `min:"3"`
+	}{}, []string{"--name", "maia"})
+
+	assertError(t, err, `Name min: unsupported type string`)
 }
 
 func TestParse_environment_errors(t *testing.T) {
