@@ -605,7 +605,7 @@ func validateNonzero(field reflect.StructField, value reflect.Value) error {
 
 			return nil
 		case *Time:
-			if v == nil || v.Time == nil || v.Time.IsZero() {
+			if v == nil || v.Time == nil || v.IsZero() {
 				return fmt.Errorf("%s nonzero: value must not be zero", field.Name)
 			}
 
