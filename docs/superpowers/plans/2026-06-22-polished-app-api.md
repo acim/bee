@@ -1,12 +1,14 @@
 # Polished App API Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the current flat command/app-handler API with a polished typed app API that uses config values, command trees, runtime handler contexts, logger injection, documented graceful shutdown ordering, and struct-tag validation.
 
 **Architecture:** Keep `service.go` as the app runtime owner, but split command-tree and handler-context concepts into focused types so app definition and command execution are separate. Keep `command_line.go` responsible for reflection-based config parsing and add a validation pass after flag parsing, before command execution. Update examples and README only after the new API is covered by tests.
 
 **Tech Stack:** Go 1.23, standard library `context`, `flag`, `log/slog`, `net/http`, `os/signal`, `reflect`, `regexp`, `sync`, existing bee config parser and value types.
+
+**Completion note:** Implemented and merged in commit `04e6f50` (`feat: polish app API`). Review-driven fixes added clear runtime guards for manually constructed contexts/commands, group command help, semantic `nonzero` handling for `bee.URL` and `bee.Time`, empty-list validation errors, and an `HTTPServer` shutdown fix that waits for app-initiated `server.Shutdown` before running registered closers. Final verification passed with `go test -race -coverprofile=coverage.out -count=1 ./...`, `go test -count=1 ./...`, `git diff --check`, and measured coverage `90.3%`.
 
 ---
 
@@ -57,7 +59,7 @@
 - Modify: `app_test.go`
 - Modify: `service_internal_test.go`
 
-- [ ] **Step 1: Write failing app tests for value config, exported context fields, injected logger, runtime methods, and root apps**
+- [x] **Step 1: Write failing app tests for value config, exported context fields, injected logger, runtime methods, and root apps**
 
 Add these tests to `app_test.go`. Replace helper usage only as needed for this task.
 
@@ -135,7 +137,7 @@ func TestAppWithoutCommandsRequiresRoot(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and verify they fail to compile**
+- [x] **Step 2: Run focused tests and verify they fail to compile**
 
 Run outside the sandbox because Go may need the normal build cache:
 
@@ -151,7 +153,7 @@ undefined: Context
 undefined: WithLogger
 ```
 
-- [ ] **Step 3: Implement the new public handler context and value-config constructor**
+- [x] **Step 3: Implement the new public handler context and value-config constructor**
 
 In `service.go`, replace the app config pointer field and command handler shape with these definitions. Keep existing private fields that are not shown.
 
@@ -295,7 +297,7 @@ func (a *App[T]) runtimeContext() Context[T] {
 
 Keep `App.Register`, `App.Go`, `App.HTTPServer`, and `App.Exit` as unexported-or-deprecated-compatible internals for now if that minimizes churn, but new tests and docs should use `Context[T]`.
 
-- [ ] **Step 4: Update root execution to call handlers with `Context[T]`**
+- [x] **Step 4: Update root execution to call handlers with `Context[T]`**
 
 In `RunE`, parse using `&a.cfg` and call the selected handler with `a.runtimeContext()`:
 
@@ -326,7 +328,7 @@ func (a *App[T]) Root(description string, handler Handler[T]) {
 
 Update or remove old `Config()`, `Log()`, and `Context()` tests. If keeping the methods temporarily, make them return `&a.cfg`, `a.log`, and `a.ctx` so old internal tests can be migrated in later tasks without hiding failures in the new API.
 
-- [ ] **Step 5: Run focused tests and verify they pass**
+- [x] **Step 5: Run focused tests and verify they pass**
 
 Run:
 
@@ -336,7 +338,7 @@ go test -count=1 -run 'TestAppRootReceivesRuntimeContextWithFields|TestAppWithou
 
 Expected: PASS.
 
-- [ ] **Step 6: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 6: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -355,7 +357,7 @@ Expected: only constructor/context/logger/root-app changes.
 - Modify: `service.go`
 - Modify: `app_test.go`
 
-- [ ] **Step 1: Write failing tests for tree registration, nested dispatch, intermediate handlers, invalid command names, duplicate siblings, unknown commands, default command, and help**
+- [x] **Step 1: Write failing tests for tree registration, nested dispatch, intermediate handlers, invalid command names, duplicate siblings, unknown commands, default command, and help**
 
 Add these tests to `app_test.go`:
 
@@ -505,7 +507,7 @@ func TestAppCommandTreeDefaultCommand(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run command-tree tests and verify they fail**
+- [x] **Step 2: Run command-tree tests and verify they fail**
 
 Run:
 
@@ -515,7 +517,7 @@ go test -count=1 -run 'TestAppCommandTree' ./...
 
 Expected: FAIL to compile or fail behaviorally because `Command` still expects flat paths and does not return a command node.
 
-- [ ] **Step 3: Implement public `Command[T]` node and registration**
+- [x] **Step 3: Implement public `Command[T]` node and registration**
 
 In `service.go`, add:
 
@@ -584,7 +586,7 @@ func validateCommandName(name string) string {
 
 Keep variadic handler support so both group commands and executable intermediate commands use the same method name.
 
-- [ ] **Step 4: Implement tree command selection and command listing**
+- [x] **Step 4: Implement tree command selection and command listing**
 
 Replace flat `longestCommand` logic with tree traversal:
 
@@ -681,7 +683,7 @@ func (a *App[T]) commandByPath(path string) *Command[T] {
 }
 ```
 
-- [ ] **Step 5: Update `RunE` and usage helpers to use `*Command[T]`**
+- [x] **Step 5: Update `RunE` and usage helpers to use `*Command[T]`**
 
 Change `setUsage` and `writeUsage` signatures:
 
@@ -727,7 +729,7 @@ func (a *App[T]) writeUsage(cmd *Command[T]) {
 }
 ```
 
-- [ ] **Step 6: Run command-tree tests and verify they pass**
+- [x] **Step 6: Run command-tree tests and verify they pass**
 
 Run:
 
@@ -737,7 +739,7 @@ go test -count=1 -run 'TestAppCommandTree|TestAppHelp|TestAppCommandHelp|TestApp
 
 Expected: PASS after replacing old flat-command tests with tree API equivalents.
 
-- [ ] **Step 7: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 7: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -755,7 +757,7 @@ Expected: command registry and command dispatch changed from flat map paths to t
 - Modify: `command_line.go`
 - Modify: `command_line_internal_test.go`
 
-- [ ] **Step 1: Write failing tests for `min`, `max`, and `oneof`**
+- [x] **Step 1: Write failing tests for `min`, `max`, and `oneof`**
 
 Add these tests to `command_line_internal_test.go`:
 
@@ -828,7 +830,7 @@ func TestParseValidationOneOf(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run validation tests and verify they fail**
+- [x] **Step 2: Run validation tests and verify they fail**
 
 Run:
 
@@ -838,7 +840,7 @@ go test -count=1 -run 'TestParseValidationMinMax|TestParseValidationOneOf' ./...
 
 Expected: FAIL because validation tags are ignored.
 
-- [ ] **Step 3: Add validation traversal after flag parsing**
+- [x] **Step 3: Add validation traversal after flag parsing**
 
 In `command_line.go`, call validation after required validation:
 
@@ -919,7 +921,7 @@ func isSpecialStructValue(v reflect.Value) bool {
 }
 ```
 
-- [ ] **Step 4: Implement numeric min/max validation**
+- [x] **Step 4: Implement numeric min/max validation**
 
 Add helpers to `command_line.go`:
 
@@ -1009,7 +1011,7 @@ Implement `compareMaximum` with the same type handling and messages using `max`,
 return fmt.Errorf("%s max: value %d must be <= %d", field.Name, got, limit)
 ```
 
-- [ ] **Step 5: Implement comma-separated `oneof` validation**
+- [x] **Step 5: Implement comma-separated `oneof` validation**
 
 Add:
 
@@ -1073,7 +1075,7 @@ func validationString(value reflect.Value) string {
 }
 ```
 
-- [ ] **Step 6: Run focused validation tests**
+- [x] **Step 6: Run focused validation tests**
 
 Run:
 
@@ -1083,7 +1085,7 @@ go test -count=1 -run 'TestParseValidationMinMax|TestParseValidationOneOf' ./...
 
 Expected: PASS.
 
-- [ ] **Step 7: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 7: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -1101,7 +1103,7 @@ Expected: validation traversal plus numeric and `oneof` helpers.
 - Modify: `command_line.go`
 - Modify: `command_line_internal_test.go`
 
-- [ ] **Step 1: Write failing tests for string/slice length validation**
+- [x] **Step 1: Write failing tests for string/slice length validation**
 
 Add to `command_line_internal_test.go`:
 
@@ -1165,7 +1167,7 @@ func TestParseValidationLengthTags(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Write failing tests for `regex`, `prefix`, `suffix`, and `nonzero`**
+- [x] **Step 2: Write failing tests for `regex`, `prefix`, `suffix`, and `nonzero`**
 
 Add:
 
@@ -1236,7 +1238,7 @@ func TestParseValidationStringLikeTags(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run focused tests and verify they fail**
+- [x] **Step 3: Run focused tests and verify they fail**
 
 Run:
 
@@ -1246,7 +1248,7 @@ go test -count=1 -run 'TestParseValidationLengthTags|TestParseValidationStringLi
 
 Expected: FAIL because these validation tags are ignored.
 
-- [ ] **Step 4: Implement length helpers**
+- [x] **Step 4: Implement length helpers**
 
 Add calls in `validateField`:
 
@@ -1320,7 +1322,7 @@ func validationLength(value reflect.Value) (int, bool) {
 }
 ```
 
-- [ ] **Step 5: Implement regex, prefix, suffix, and nonzero helpers**
+- [x] **Step 5: Implement regex, prefix, suffix, and nonzero helpers**
 
 Add:
 
@@ -1406,7 +1408,7 @@ func validateNonzero(field reflect.StructField, value reflect.Value) error {
 }
 ```
 
-- [ ] **Step 6: Run focused tests and verify they pass**
+- [x] **Step 6: Run focused tests and verify they pass**
 
 Run:
 
@@ -1416,7 +1418,7 @@ go test -count=1 -run 'TestParseValidationLengthTags|TestParseValidationStringLi
 
 Expected: PASS.
 
-- [ ] **Step 7: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 7: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -1434,7 +1436,7 @@ Expected: length, regex, prefix, suffix, and nonzero validation added.
 - Modify: `command_line.go`
 - Modify: `command_line_internal_test.go`
 
-- [ ] **Step 1: Write failing tests for validation error handling modes**
+- [x] **Step 1: Write failing tests for validation error handling modes**
 
 Add to `command_line_internal_test.go`:
 
@@ -1484,7 +1486,7 @@ func TestParseValidationPanicOnErrorPanics(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Write failing test for help bypassing validation**
+- [x] **Step 2: Write failing test for help bypassing validation**
 
 Add:
 
@@ -1510,7 +1512,7 @@ func TestParseHelpBypassesValidation(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run focused tests and verify they fail if validation bypass/error routing is incomplete**
+- [x] **Step 3: Run focused tests and verify they fail if validation bypass/error routing is incomplete**
 
 Run:
 
@@ -1520,7 +1522,7 @@ go test -count=1 -run 'TestParseValidationExitOnErrorWritesAndExits|TestParseVal
 
 Expected: PASS if Tasks 3-4 already routed through `cl.exit` and skipped validation on help; otherwise FAIL with direct returned validation errors or help validation errors.
 
-- [ ] **Step 4: Fix validation routing and help bypass if needed**
+- [x] **Step 4: Fix validation routing and help bypass if needed**
 
 Ensure `commandLine.parse` has this exact order:
 
@@ -1548,7 +1550,7 @@ if cl.help {
 }
 ```
 
-- [ ] **Step 5: Run focused tests and verify they pass**
+- [x] **Step 5: Run focused tests and verify they pass**
 
 Run:
 
@@ -1558,7 +1560,7 @@ go test -count=1 -run 'TestParseValidationExitOnErrorWritesAndExits|TestParseVal
 
 Expected: PASS.
 
-- [ ] **Step 6: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 6: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -1576,7 +1578,7 @@ Expected: only validation ordering/error behavior adjustments beyond prior valid
 - Modify: `service.go`
 - Modify: `app_test.go`
 
-- [ ] **Step 1: Write failing or regression test for HTTP server shutdown before registered closers**
+- [x] **Step 1: Write failing or regression test for HTTP server shutdown before registered closers**
 
 Add to `app_test.go`:
 
@@ -1666,7 +1668,7 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 
 Add `net` to the test imports.
 
-- [ ] **Step 2: Run the shutdown ordering test**
+- [x] **Step 2: Run the shutdown ordering test**
 
 Run:
 
@@ -1676,7 +1678,7 @@ go test -count=1 -run TestAppHTTPServerDrainsBeforeRegisteredClosers ./...
 
 Expected: PASS if existing lifecycle already waits for supervised goroutines before closers. If it fails, the order is wrong and must be fixed before docs are updated.
 
-- [ ] **Step 3: Fix lifecycle order only if the test fails**
+- [x] **Step 3: Fix lifecycle order only if the test fails**
 
 In `RunE`, ensure this order remains:
 
@@ -1690,7 +1692,7 @@ return a.err()
 
 Do not move `runClosers` before `wg.Wait`.
 
-- [ ] **Step 4: Run lifecycle tests**
+- [x] **Step 4: Run lifecycle tests**
 
 Run:
 
@@ -1700,7 +1702,7 @@ go test -count=1 -run 'TestAppHTTPServer|TestAppClosers|TestAppCommandSetup|Test
 
 Expected: PASS.
 
-- [ ] **Step 5: Inspect diff; do not commit unless explicitly asked**
+- [x] **Step 5: Inspect diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -1718,7 +1720,7 @@ Expected: shutdown order test plus any minimal lifecycle correction.
 - Modify: `example_test.go`
 - Modify: `README.md`
 
-- [ ] **Step 1: Update examples to compile with the polished app API**
+- [x] **Step 1: Update examples to compile with the polished app API**
 
 In `example_test.go`, update examples to use value config and `Context[T]`:
 
@@ -1745,7 +1747,7 @@ app.Command("start", "Start services").
 	})
 ```
 
-- [ ] **Step 2: Run example tests and verify failures are gone**
+- [x] **Step 2: Run example tests and verify failures are gone**
 
 Run:
 
@@ -1755,7 +1757,7 @@ go test -count=1 -run Example ./...
 
 Expected: PASS.
 
-- [ ] **Step 3: Update README app setup section**
+- [x] **Step 3: Update README app setup section**
 
 Replace the existing app setup example with a polished API example containing:
 
@@ -1794,7 +1796,7 @@ app.Root("Run service", runService)
 app.Run()
 ```
 
-- [ ] **Step 4: Add README validation tag table**
+- [x] **Step 4: Add README validation tag table**
 
 Add a table with these exact rows:
 
@@ -1820,7 +1822,7 @@ Document the distinction:
 `nonzero` means the final parsed value, after defaults/env/flags, must not be zero.
 ```
 
-- [ ] **Step 5: Add README graceful shutdown section**
+- [x] **Step 5: Add README graceful shutdown section**
 
 Add this public behavior text:
 
@@ -1842,7 +1844,7 @@ and `ctx.Register("queue", closeQueue)`, shutdown order is:
 4. registered closers run in reverse order: queue, then database
 ```
 
-- [ ] **Step 6: Run docs/examples verification**
+- [x] **Step 6: Run docs/examples verification**
 
 Run:
 
@@ -1852,7 +1854,7 @@ go test -count=1 ./...
 
 Expected: PASS.
 
-- [ ] **Step 7: Inspect README and examples diff; do not commit unless explicitly asked**
+- [x] **Step 7: Inspect README and examples diff; do not commit unless explicitly asked**
 
 Run:
 
@@ -1870,7 +1872,7 @@ Expected: examples and public docs use only the polished API.
 - Modify: `README.md` only if coverage value changes.
 - Check: all modified Go files and docs.
 
-- [ ] **Step 1: Run gofmt**
+- [x] **Step 1: Run gofmt**
 
 Run:
 
@@ -1880,7 +1882,7 @@ gofmt -w *.go
 
 Expected: no output.
 
-- [ ] **Step 2: Run full race test with coverage**
+- [x] **Step 2: Run full race test with coverage**
 
 Run outside the sandbox because Go may need the normal build cache:
 
@@ -1890,7 +1892,7 @@ go test -race -coverprofile=coverage.out -count=1 ./...
 
 Expected: PASS.
 
-- [ ] **Step 3: Compute exact coverage**
+- [x] **Step 3: Compute exact coverage**
 
 Run:
 
@@ -1904,7 +1906,7 @@ Expected: output ending with:
 total:	(statements)	NN.N%
 ```
 
-- [ ] **Step 4: Update README coverage badge only if the measured value differs**
+- [x] **Step 4: Update README coverage badge only if the measured value differs**
 
 If Step 3 reports a value other than the README badge value, update only the numeric value in this line:
 
@@ -1918,7 +1920,7 @@ For example, if coverage is `94.8%`, the line becomes:
 ![coverage](https://img.shields.io/badge/coverage-94.8%25-brightgreen?style=flat&logo=go)
 ```
 
-- [ ] **Step 5: Run full tests again if README changed only for coverage**
+- [x] **Step 5: Run full tests again if README changed only for coverage**
 
 Run:
 
@@ -1928,7 +1930,7 @@ go test -count=1 ./...
 
 Expected: PASS.
 
-- [ ] **Step 6: Inspect full diff**
+- [x] **Step 6: Inspect full diff**
 
 Run:
 
@@ -1939,7 +1941,7 @@ git diff
 
 Expected: scoped changes to app API, command tree, validation, examples, README, and tests.
 
-- [ ] **Step 7: Self-review against the design spec**
+- [x] **Step 7: Self-review against the design spec**
 
 Check each item manually:
 
@@ -1961,7 +1963,7 @@ Check each item manually:
 [ ] README documents graceful shutdown ordering.
 ```
 
-- [ ] **Step 8: Final repository reminders**
+- [x] **Step 8: Final repository reminders**
 
 When reporting completion, include these reminders if applicable:
 

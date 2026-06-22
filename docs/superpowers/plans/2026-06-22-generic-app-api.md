@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go 1.23, standard library `context`, `flag`, `log/slog`, `os/signal`, `sync`, existing `commandLine` parser.
 
+**Superseded note:** This completed plan records the first generic app API implementation. Its flat command-path examples and `func(app *bee.App[T]) error` handlers are historical, not current API guidance. The current app API is specified and implemented by `docs/superpowers/plans/2026-06-22-polished-app-api.md`: value config, `bee.Context[T]` handlers, command trees, validation tags, and graceful HTTP shutdown ordering.
+
 ---
 
 ### Task 1: Command And Config Tests
