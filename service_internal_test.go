@@ -204,6 +204,48 @@ func TestAppNewWithUsage(t *testing.T) {
 	}
 }
 
+func TestAppRunDoesNotExitOnSuccess(t *testing.T) {
+	exitFuncMu.Lock()
+	args := os.Args
+	t.Cleanup(func() {
+		os.Args = args
+		osExit = os.Exit
+		exitFuncMu.Unlock()
+	})
+
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
+		ctx.app.cancel()
+
+		return nil
+	})
+
+	osExit = func(code int) {
+		t.Fatalf("Run called osExit(%d) on success", code)
+	}
+	os.Args = []string{"test"}
+
+	app.Run()
+}
+
+func TestAppRunExitsOnFailure(t *testing.T) {
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	app.Root("Run app", func(*Ctx[appTestConfig]) error {
+		return errors.New("boom")
+	})
+
+	args := os.Args
+	os.Args = []string{"test"}
+	t.Cleanup(func() {
+		os.Args = args
+	})
+
+	gotCode := captureExit(t, app.Run)
+	if gotCode != exitCode {
+		t.Fatalf("want exit code %d, got %d", exitCode, gotCode)
+	}
+}
+
 func TestSlogError(t *testing.T) {
 	t.Parallel()
 

@@ -516,14 +516,7 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 		})
 
 		go func() {
-			resp, err := http.Get("http://" + addr)
-			if err != nil {
-				clientDone <- err
-
-				return
-			}
-			_ = resp.Body.Close()
-			clientDone <- nil
+			clientDone <- getUntilOK("http://" + addr)
 		}()
 
 		select {
@@ -584,6 +577,23 @@ func TestAppHTTPServerDrainsBeforeRegisteredClosers(t *testing.T) {
 	want := []string{"handler finished", "queue closed", "database closed"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("want shutdown order %v, got %v", want, got)
+	}
+}
+
+func getUntilOK(url string) error {
+	deadline := time.Now().Add(time.Second)
+	for {
+		resp, err := http.Get(url)
+		if err == nil {
+			_ = resp.Body.Close()
+
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return err
+		}
+
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -907,6 +917,43 @@ func TestAppExitRecordsFatalError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "fatal stop") {
 		t.Fatalf("want fatal exit message recorded, got %v", err)
+	}
+}
+
+func TestAppExitRecordsProvidedError(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	exitErr := errors.New("database unavailable")
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
+		ctx.Exit("fatal stop", exitErr)
+
+		return nil
+	})
+
+	err := app.RunE()
+	if !errors.Is(err, exitErr) {
+		t.Fatalf("want provided exit error recorded, got %v", err)
+	}
+}
+
+func TestAppExitUsesDefaultMessageForEmptyExit(t *testing.T) {
+	t.Parallel()
+
+	app := newTestApp(t, appTestConfig{}, &bytes.Buffer{})
+	app.Root("Run app", func(ctx *Ctx[appTestConfig]) error {
+		ctx.Exit("", nil)
+
+		return nil
+	})
+
+	err := app.RunE()
+	if err == nil {
+		t.Fatal("want fatal exit error")
+	}
+
+	if !strings.Contains(err.Error(), "application exit") {
+		t.Fatalf("want default exit message recorded, got %v", err)
 	}
 }
 
