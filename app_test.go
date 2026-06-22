@@ -326,7 +326,6 @@ func TestAppCommandTreeRejectsInvalidName(t *testing.T) {
 
 	tests := []string{"", "start api", " start ", "\t"}
 	for _, name := range tests {
-		name := name
 		t.Run(fmt.Sprintf("%q", name), func(t *testing.T) {
 			t.Parallel()
 

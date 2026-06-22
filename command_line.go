@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-var durationType = reflect.TypeOf(time.Duration(0))
+var durationType = reflect.TypeFor[time.Duration]()
 
 // Errors.
 var (
@@ -424,10 +425,8 @@ func validateOneOf(field reflect.StructField, value reflect.Value) error {
 	}
 
 	got := validationString(value)
-	for _, option := range allowed {
-		if got == option {
-			return nil
-		}
+	if slices.Contains(allowed, got) {
+		return nil
 	}
 
 	return fmt.Errorf("%s oneof: value %q must be one of %s", field.Name, got, strings.Join(allowed, ", "))
