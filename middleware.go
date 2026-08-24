@@ -3,6 +3,7 @@ package bee
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -27,7 +28,7 @@ func (ms *Middlewares) Wrap(mux *http.ServeMux) http.Handler {
 	wrapped = mux
 
 	// loop in reverse to preserve middleware order
-	for i := len(*ms) - 1; i >= 0; i-- {
+	for i := range slices.Backward(*ms) {
 		wrapped = (*ms)[i](wrapped)
 	}
 
