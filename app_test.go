@@ -248,6 +248,127 @@ func TestAppDefaultCommand(t *testing.T) {
 	}
 }
 
+func TestAppRootWithCommands(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	var ran string
+	app.Root("Run server", func(ctx *Ctx[appTestConfig]) error {
+		ran = "root"
+
+		return nil
+	})
+	app.Cmd("admin", "Run admin operation", func(ctx *Ctx[appTestConfig]) error {
+		ran = "admin"
+
+		return nil
+	})
+
+	if err := app.RunE("--port", "9090"); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "root" {
+		t.Fatalf("want root handler to run, got %q", ran)
+	}
+	if app.Cfg.Port != 9090 {
+		t.Fatalf("want flags to parse for root handler, got port %d", app.Cfg.Port)
+	}
+}
+
+func TestAppRootStillDispatchesNamedCommand(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	var ran string
+	app.Root("Run server", func(ctx *Ctx[appTestConfig]) error {
+		ran = "root"
+
+		return nil
+	})
+	app.Cmd("admin", "Run admin operation", func(ctx *Ctx[appTestConfig]) error {
+		ran = "admin"
+
+		return nil
+	})
+
+	if err := app.RunE("admin"); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "admin" {
+		t.Fatalf("want named command to run, got %q", ran)
+	}
+}
+
+func TestAppRootTopLevelHelpDoesNotRunHandler(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+
+	ran := false
+	app.Root("Run server", func(ctx *Ctx[appTestConfig]) error {
+		ran = true
+
+		return nil
+	})
+	app.Cmd("admin", "Run admin operation", func(ctx *Ctx[appTestConfig]) error { return nil })
+
+	if err := app.RunE("--help"); err != nil {
+		t.Fatal(err)
+	}
+	if ran {
+		t.Fatal("want top-level help not to run root handler")
+	}
+	for _, want := range []string{"Usage of maia:", "Commands:", "admin"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("want top-level help to contain %q, got:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestAppDefaultCommandTakesPrecedenceOverRoot(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output, WithDefaultCommand("worker"))
+
+	var ran string
+	app.Root("Run server", func(ctx *Ctx[appTestConfig]) error {
+		ran = "root"
+
+		return nil
+	})
+	app.Cmd("worker", "Run worker", func(ctx *Ctx[appTestConfig]) error {
+		ran = "worker"
+
+		return nil
+	})
+
+	if err := app.RunE(); err != nil {
+		t.Fatal(err)
+	}
+	if ran != "worker" {
+		t.Fatalf("want default command to take precedence, got %q", ran)
+	}
+}
+
+func TestAppCommandsWithoutRootRequireCommand(t *testing.T) {
+	t.Parallel()
+
+	output := &bytes.Buffer{}
+	app := newTestApp(t, appTestConfig{}, output)
+	app.Cmd("admin", "Run admin operation", func(ctx *Ctx[appTestConfig]) error { return nil })
+
+	err := app.RunE()
+	if err == nil || err.Error() != "no command supplied" {
+		t.Fatalf("want no command supplied error, got %v", err)
+	}
+}
+
 func TestAppCommandTreeDispatchesNestedCommand(t *testing.T) {
 	t.Parallel()
 

@@ -195,7 +195,7 @@ func (c *Cmd[T]) appRuntime() *App[T] {
 	return c.app
 }
 
-// Root registers the handler used when no commands are registered.
+// Root registers the handler used when no command is supplied.
 func (a *App[T]) Root(description string, handler Handler[T]) {
 	a.root = &Cmd[T]{description: description, handler: handler, app: a}
 }
@@ -355,7 +355,8 @@ func WithShutdownGracePeriod(d time.Duration) Option {
 	return WithShutdownTimeout(d)
 }
 
-// WithDefaultCommand configures the command used when no command is supplied.
+// WithDefaultCommand configures the named command used when no command is
+// supplied. It takes precedence over a registered root handler.
 func WithDefaultCommand(path string) Option {
 	return func(o *appOptions) {
 		o.defaultCmd = path
@@ -448,16 +449,20 @@ func (a *App[T]) selectCommand(args []string) (*Cmd[T], []string, error) {
 
 	tokens := commandTokens(args)
 	if len(tokens) == 0 {
-		if a.defaultCmd == "" {
-			return nil, args, nil
+		if a.defaultCmd != "" {
+			cmd, _, ok := a.findCommand(strings.Fields(a.defaultCmd))
+			if !ok || cmd.handler == nil {
+				return nil, args, fmt.Errorf("unknown default command %q", a.defaultCmd)
+			}
+
+			return cmd, args, nil
 		}
 
-		cmd, _, ok := a.findCommand(strings.Fields(a.defaultCmd))
-		if !ok || cmd.handler == nil {
-			return nil, args, fmt.Errorf("unknown default command %q", a.defaultCmd)
+		if a.root != nil {
+			return a.root, args, nil
 		}
 
-		return cmd, args, nil
+		return nil, args, nil
 	}
 
 	cmd, consumed, ok := a.findCommand(tokens)
