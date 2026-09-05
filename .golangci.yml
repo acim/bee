@@ -1,0 +1,69 @@
+version: "2"
+
+issues:
+  # Defaults cap a linter at 50 issues and the same message at 3, which hides
+  # the real size of a backlog. Report everything.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  enable:
+    - asasalint
+    - bidichk
+    - bodyclose
+    - durationcheck
+    - errname
+    - errorlint
+    - exptostd
+    - fatcontext
+    - gocheckcompilerdirectives
+    - intrange
+    - iotamixing
+    - loggercheck
+    - makezero
+    - mirror
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nolintlint
+    - perfsprint
+    - predeclared
+    - protogetter
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - testifylint
+    - tparallel
+    - unconvert
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable:
+        - nilness
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    rules:
+      # noctx reports httptest.NewRequest and http.Get, which are idiomatic in
+      # tests, so it guards production code only.
+      - path: _test\.go
+        linters:
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - go.acim.net/bee

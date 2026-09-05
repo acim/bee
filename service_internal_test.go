@@ -56,7 +56,7 @@ func TestServiceOptions(t *testing.T) {
 
 	var output bytes.Buffer
 
-	opts := appOptions{} //nolint:exhaustruct
+	opts := appOptions{}
 
 	WithShutdownGracePeriod(3 * time.Second)(&opts)
 	WithLogLevel("warn")(&opts)
@@ -96,7 +96,7 @@ func TestServiceOptions(t *testing.T) {
 func TestWithLogLevelDefaultsToDebug(t *testing.T) {
 	t.Parallel()
 
-	opts := appOptions{} //nolint:exhaustruct
+	opts := appOptions{}
 	WithLogLevel("trace")(&opts)
 
 	if opts.logLevel.Level() != slog.LevelDebug {
@@ -126,7 +126,7 @@ func TestWithLogLevel(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			opts := appOptions{} //nolint:exhaustruct
+			opts := appOptions{}
 			WithLogLevel(tt.in)(&opts)
 
 			if opts.logLevel.Level() != tt.want {

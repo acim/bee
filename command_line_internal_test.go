@@ -36,6 +36,8 @@ func assertError(t *testing.T, err error, want string) {
 func TestParse_errors(t *testing.T) {
 	t.Parallel()
 
+	type level string
+
 	tests := map[string]struct {
 		in      any
 		flags   []string
@@ -63,7 +65,14 @@ func TestParse_errors(t *testing.T) {
 				Port int16
 			}{},
 			flags:   []string{""},
-			wantErr: "Port def: parsing value: type not supported: int16",
+			wantErr: "Port def: parsing value: type not supported: *int16 (kind int16)",
+		},
+		"named-scalar-type": {
+			in: &struct {
+				Level level `def:"debug"`
+			}{},
+			flags:   []string{},
+			wantErr: "Level def: parsing value: type not supported: *bee.level (kind string)",
 		},
 		"---help": {
 			in: &struct {
@@ -74,8 +83,7 @@ func TestParse_errors(t *testing.T) {
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
-
+	for n, tt := range tests {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -84,6 +92,39 @@ func TestParse_errors(t *testing.T) {
 
 			err := cl.parse(tt.in, tt.flags)
 			assertError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestParseValueRejectsMismatchedPointer(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		kind       reflect.Kind
+		mismatched any
+		wantType   string
+	}{
+		"bool":    {kind: reflect.Bool, mismatched: new(string), wantType: "*string"},
+		"float64": {kind: reflect.Float64, mismatched: new(int), wantType: "*int"},
+		"int":     {kind: reflect.Int, mismatched: new(float64), wantType: "*float64"},
+		"string":  {kind: reflect.String, mismatched: new(bool), wantType: "*bool"},
+		"uint":    {kind: reflect.Uint, mismatched: new(uint64), wantType: "*uint64"},
+		"uint64":  {kind: reflect.Uint64, mismatched: new(uint), wantType: "*uint"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+
+			err := cl.parseValue(tt.kind, tt.mismatched, "value", "1", "value")
+			if !errors.Is(err, ErrUnsupportedType) {
+				t.Fatalf("want unsupported type error, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantType) {
+				t.Fatalf("want concrete type %q in error, got %q", tt.wantType, err)
+			}
 		})
 	}
 }
@@ -261,8 +302,10 @@ func TestPanicOnErrorPanics(t *testing.T) {
 	cl.errorHandling = flag.PanicOnError
 
 	defer func() {
-		if got := recover(); got != flag.ErrHelp {
-			t.Fatalf("want panic %v, got %v", flag.ErrHelp, got)
+		recovered := recover()
+		got, ok := recovered.(error)
+		if !ok || !errors.Is(got, flag.ErrHelp) {
+			t.Fatalf("want panic %v, got %v", flag.ErrHelp, recovered)
 		}
 	}()
 
@@ -333,7 +376,7 @@ func TestParseHelpBypassesValidation(t *testing.T) {
 	}
 }
 
-func TestParse_usage(t *testing.T) { //nolint:funlen
+func TestParse_usage(t *testing.T) {
 	t.Parallel()
 
 	ws := regexp.MustCompile(`\s+`)
@@ -491,7 +534,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 			config: &struct {
 				DailyTemperatures IntSlice `def:"10,-5,0"`
 			}{},
-			want: "Usage of test: -daily-temperatures value daily temperatures (env TEST_DAILY_TEMPERATURES) (default [10,-5,0])", //nolint:lll
+			want: "Usage of test: -daily-temperatures value daily temperatures (env TEST_DAILY_TEMPERATURES) (default [10,-5,0])",
 		},
 		"int-slice-help-with-invalid-def": {
 			config: &struct {
@@ -551,8 +594,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
-
+	for n, tt := range tests {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -578,7 +620,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 	}
 }
 
-func TestParse_valid(t *testing.T) { //nolint:funlen
+func TestParse_valid(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -630,8 +672,7 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
-
+	for n, tt := range tests {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -1211,8 +1252,7 @@ func TestParse_environment_errors(t *testing.T) {
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
-
+	for n, tt := range tests {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -1226,7 +1266,7 @@ func TestParse_environment_errors(t *testing.T) {
 	}
 }
 
-func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maintidx
+func TestParse_environment(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -1467,7 +1507,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "", false
 			},
-			wantURL: URL{}, //nolint:exhaustruct
+			wantURL: URL{},
 		},
 		"url-env-not-set-def-set": {
 			config: &struct {
@@ -1476,7 +1516,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "", false
 			},
-			wantURL: URL{URL: &url.URL{Scheme: "http", Host: "localhost"}}, //nolint:exhaustruct
+			wantURL: URL{URL: &url.URL{Scheme: "http", Host: "localhost"}},
 		},
 		"url-env-set": {
 			config: &struct {
@@ -1485,7 +1525,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "https://api.example.com/v1", true
 			},
-			wantURL: URL{URL: &url.URL{Scheme: "https", Host: "api.example.com", Path: "/v1"}}, //nolint:exhaustruct
+			wantURL: URL{URL: &url.URL{Scheme: "https", Host: "api.example.com", Path: "/v1"}},
 		},
 		"string-slice-env-not-set-def-not-set": {
 			config: &struct {
@@ -1543,8 +1583,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
-
+	for n, tt := range tests {
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
