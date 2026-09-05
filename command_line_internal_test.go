@@ -65,14 +65,14 @@ func TestParse_errors(t *testing.T) {
 				Port int16
 			}{},
 			flags:   []string{""},
-			wantErr: "Port def: parsing value: type not supported: int16",
+			wantErr: "Port def: parsing value: type not supported: *int16 (kind int16)",
 		},
 		"named-scalar-type": {
 			in: &struct {
 				Level level `def:"debug"`
 			}{},
 			flags:   []string{},
-			wantErr: "Level def: parsing value: type not supported: string",
+			wantErr: "Level def: parsing value: type not supported: *bee.level (kind string)",
 		},
 		"---help": {
 			in: &struct {
@@ -102,13 +102,14 @@ func TestParseValueRejectsMismatchedPointer(t *testing.T) {
 	tests := map[string]struct {
 		kind       reflect.Kind
 		mismatched any
+		wantType   string
 	}{
-		"bool":    {kind: reflect.Bool, mismatched: new(string)},
-		"float64": {kind: reflect.Float64, mismatched: new(int)},
-		"int":     {kind: reflect.Int, mismatched: new(float64)},
-		"string":  {kind: reflect.String, mismatched: new(bool)},
-		"uint":    {kind: reflect.Uint, mismatched: new(uint64)},
-		"uint64":  {kind: reflect.Uint64, mismatched: new(uint)},
+		"bool":    {kind: reflect.Bool, mismatched: new(string), wantType: "*string"},
+		"float64": {kind: reflect.Float64, mismatched: new(int), wantType: "*int"},
+		"int":     {kind: reflect.Int, mismatched: new(float64), wantType: "*float64"},
+		"string":  {kind: reflect.String, mismatched: new(bool), wantType: "*bool"},
+		"uint":    {kind: reflect.Uint, mismatched: new(uint64), wantType: "*uint64"},
+		"uint64":  {kind: reflect.Uint64, mismatched: new(uint), wantType: "*uint"},
 	}
 
 	for name, tt := range tests {
@@ -120,6 +121,9 @@ func TestParseValueRejectsMismatchedPointer(t *testing.T) {
 			err := cl.parseValue(tt.kind, tt.mismatched, "value", "1", "value")
 			if !errors.Is(err, ErrUnsupportedType) {
 				t.Fatalf("want unsupported type error, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantType) {
+				t.Fatalf("want concrete type %q in error, got %q", tt.wantType, err)
 			}
 		})
 	}

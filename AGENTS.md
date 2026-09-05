@@ -9,9 +9,13 @@
   `![coverage](https://img.shields.io/badge/coverage-<value>%25-brightgreen?style=flat&logo=go)`
   Replace only `<value>` with the measured number, for example `82.2`; keep `%25` as the encoded percent sign.
 
+## GitHub Actions
+
+- Every `ectobit/*` action and reusable workflow reference tracks `@main` and never overrides shared `go-version`, `golangci-lint-version`, or `govulncheck-version` values.
+- Third-party actions use a bare major version tag, such as `actions/checkout@v7`.
+
 ## CI and Security Notes
 
-- The GitHub Actions pipeline intentionally uses `ectobit/reusable-workflows` refs at `@main`.
 - Do not add an `actionlint` CI job unless explicitly requested; validate workflow changes locally with `actionlint`.
 - `ectobit/reusable-workflows/.github/workflows/go-check.yaml` already runs `golangci-lint run` and `govulncheck ./...`.
 - GitHub CodeQL/code scanning is enabled in the repository settings.

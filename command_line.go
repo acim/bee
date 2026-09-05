@@ -792,7 +792,7 @@ func (cl *commandLine) parseValue(kind reflect.Kind, varPointer any, flag, value
 		}
 	}
 
-	return fmt.Errorf("parsing value: %w: %v", ErrUnsupportedType, kind)
+	return fmt.Errorf("parsing value: %w: %T (kind %v)", ErrUnsupportedType, varPointer, kind)
 }
 
 func (cl *commandLine) parseBool(p *bool, flag, value, usage string) error {
