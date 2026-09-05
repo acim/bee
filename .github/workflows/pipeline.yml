@@ -6,7 +6,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: raven-actions/actionlint@v2
+
   check:
+    needs: actionlint
     uses: ectobit/reusable-workflows/.github/workflows/go-check.yaml@main
     with:
       test-command: make test

@@ -32,8 +32,10 @@ Besides the types supported by flag package, this package provides additional ty
 - **bee.URL**
 - **bee.Time** - RFC3339 time
 
-Named variants of supported scalar types are rejected with `bee.ErrUnsupportedType`
-rather than coerced to their underlying type.
+User-defined named scalar types, such as `type Level string`, are not supported.
+Fields of these types that previously panicked during parsing now return an error
+wrapping `bee.ErrUnsupportedType`. Supported types such as `time.Duration` and
+the `bee` types listed above remain supported.
 
 ## Order of precedence:
 
