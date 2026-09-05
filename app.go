@@ -94,7 +94,7 @@ func New[T any](name string, cfg *T, opts ...Option) *App[T] {
 		panic("bee: invalid nil config")
 	}
 
-	options := appOptions{ //nolint:exhaustruct
+	options := appOptions{
 		timeout:       defaultShutdownGracePeriod,
 		output:        os.Stderr,
 		lookupEnvFunc: os.LookupEnv,
@@ -111,7 +111,7 @@ func New[T any](name string, cfg *T, opts ...Option) *App[T] {
 	cl.flagSet.SetOutput(options.output)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	app := &App[T]{ //nolint:exhaustruct
+	app := &App[T]{
 		name:        name,
 		Cfg:         cfg,
 		commandLine: cl,
@@ -125,7 +125,7 @@ func New[T any](name string, cfg *T, opts ...Option) *App[T] {
 		cancel:      cancel,
 		signalCh:    make(chan os.Signal, 1),
 	}
-	app.Log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: app.logLevel})) //nolint:exhaustruct
+	app.Log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: app.logLevel}))
 	if options.log != nil {
 		app.Log = options.log
 	}
@@ -589,7 +589,7 @@ func (a *App[T]) addCommand(parent *Cmd[T], name string, description string, han
 		panic(fmt.Sprintf("duplicate command %q", name))
 	}
 
-	cmd := &Cmd[T]{ //nolint:exhaustruct
+	cmd := &Cmd[T]{
 		name:        name,
 		path:        path,
 		description: description,

@@ -42,7 +42,7 @@ func TestStringSlice(t *testing.T) {
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -66,7 +66,7 @@ func TestStringSlice(t *testing.T) {
 	}
 }
 
-func TestIntSlice(t *testing.T) { //nolint:funlen
+func TestIntSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -107,7 +107,7 @@ func TestIntSlice(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -136,7 +136,7 @@ func TestIntSlice(t *testing.T) { //nolint:funlen
 	}
 }
 
-func TestURL(t *testing.T) { //nolint:funlen
+func TestURL(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -148,41 +148,41 @@ func TestURL(t *testing.T) { //nolint:funlen
 		"empty": {
 			"",
 			"",
-			url.URL{}, //nolint:exhaustruct
+			url.URL{},
 			false,
 		},
 		"path": {
 			"foo.bar",
 			"foo.bar",
-			url.URL{Path: "foo.bar"}, //nolint:exhaustruct
+			url.URL{Path: "foo.bar"},
 			false,
 		},
 		"host": {
 			"//foo.bar",
 			"//foo.bar",
-			url.URL{Host: "foo.bar"}, //nolint:exhaustruct
+			url.URL{Host: "foo.bar"},
 			false,
 		},
 		"full": {
 			"https://foo.bar/baz?qux=1",
 			"https://foo.bar/baz?qux=1",
-			url.URL{Scheme: "https", Host: "foo.bar", Path: "/baz", RawQuery: "qux=1"}, //nolint:exhaustruct
+			url.URL{Scheme: "https", Host: "foo.bar", Path: "/baz", RawQuery: "qux=1"},
 			false,
 		},
 		"invalid": {
 			"%",
 			"",
-			url.URL{}, //nolint:exhaustruct
+			url.URL{},
 			true,
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			f := &bee.URL{} //nolint:exhaustruct
+			f := &bee.URL{}
 
 			err := f.Set(tt.in)
 			if err != nil {
@@ -209,7 +209,7 @@ func TestURL(t *testing.T) { //nolint:funlen
 func TestURLGetZeroValue(t *testing.T) {
 	t.Parallel()
 
-	f := &bee.URL{} //nolint:exhaustruct
+	f := &bee.URL{}
 
 	gotGet := f.Get()
 	if !reflect.DeepEqual(gotGet, url.URL{}) {
@@ -228,7 +228,7 @@ func TestURLGetNil(t *testing.T) {
 	}
 }
 
-func TestTime(t *testing.T) { //nolint:funlen
+func TestTime(t *testing.T) {
 	t.Parallel()
 
 	at1, err := time.Parse(time.RFC3339, "2002-10-02T10:00:00-05:00")
@@ -278,12 +278,12 @@ func TestTime(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
-			f := &bee.Time{} //nolint:exhaustruct
+			f := &bee.Time{}
 
 			err := f.Set(tt.in)
 			if err != nil {
@@ -310,7 +310,7 @@ func TestTime(t *testing.T) { //nolint:funlen
 func TestTimeGetZeroValue(t *testing.T) {
 	t.Parallel()
 
-	f := &bee.Time{} //nolint:exhaustruct
+	f := &bee.Time{}
 
 	gotGet := f.Get()
 	if !reflect.DeepEqual(gotGet, time.Time{}) {

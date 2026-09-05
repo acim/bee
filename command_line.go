@@ -42,7 +42,7 @@ type commandLine struct {
 }
 
 func newCommandLine(name string) *commandLine {
-	a := &commandLine{ //nolint:exhaustruct
+	a := &commandLine{
 		flagSet:       flag.NewFlagSet(name, flag.ContinueOnError),
 		output:        os.Stderr,
 		lookupEnvFunc: os.LookupEnv,
@@ -78,7 +78,7 @@ func (cl *commandLine) parse(config any, flags []string) error {
 	return nil
 }
 
-func (cl *commandLine) subParse(config any, flags []string, prefix string) error { //nolint:cyclop
+func (cl *commandLine) subParse(config any, flags []string, prefix string) error {
 	cl.parseHelp(flags)
 
 	v := reflect.ValueOf(config)
@@ -99,7 +99,7 @@ func (cl *commandLine) subParse(config any, flags []string, prefix string) error
 
 	v = v.Elem()
 
-	for i := 0; i < v.NumField(); i++ {
+	for i := range v.NumField() {
 		field := t.Elem().Field(i)
 
 		flagName := cl.flagName(field, prefix)
@@ -219,7 +219,7 @@ func (cl *commandLine) validate(config any) error {
 
 func (cl *commandLine) validateStruct(v reflect.Value) error {
 	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
+	for i := range v.NumField() {
 		field := t.Field(i)
 		value := v.Field(i)
 		if field.PkgPath != "" {
@@ -284,14 +284,14 @@ func (cl *commandLine) validateField(field reflect.StructField, value reflect.Va
 }
 
 func validateMinMax(field reflect.StructField, value reflect.Value) error {
-	if min := field.Tag.Get("min"); min != "" {
-		if err := compareMinimum(field, value, min); err != nil {
+	if minimum := field.Tag.Get("min"); minimum != "" {
+		if err := compareMinimum(field, value, minimum); err != nil {
 			return err
 		}
 	}
 
-	if max := field.Tag.Get("max"); max != "" {
-		if err := compareMaximum(field, value, max); err != nil {
+	if maximum := field.Tag.Get("max"); maximum != "" {
+		if err := compareMaximum(field, value, maximum); err != nil {
 			return err
 		}
 	}
@@ -299,14 +299,14 @@ func validateMinMax(field reflect.StructField, value reflect.Value) error {
 	return nil
 }
 
-func compareMinimum(field reflect.StructField, value reflect.Value, min string) error { //nolint:cyclop
+func compareMinimum(field reflect.StructField, value reflect.Value, minimum string) error {
 	if value.Type() == durationType {
-		limit, err := time.ParseDuration(min)
+		limit, err := time.ParseDuration(minimum)
 		if err != nil {
-			return fmt.Errorf("%s min: parsing duration %q: %w", field.Name, min, err)
+			return fmt.Errorf("%s min: parsing duration %q: %w", field.Name, minimum, err)
 		}
 
-		got := value.Interface().(time.Duration)
+		got := time.Duration(value.Int())
 		if got < limit {
 			return fmt.Errorf("%s min: value %s must be >= %s", field.Name, got, limit)
 		}
@@ -314,11 +314,11 @@ func compareMinimum(field reflect.StructField, value reflect.Value, min string) 
 		return nil
 	}
 
-	switch value.Kind() { //nolint:exhaustive
+	switch value.Kind() {
 	case reflect.Int, reflect.Int64:
-		limit, err := strconv.ParseInt(min, 10, 64) //nolint:gomnd
+		limit, err := strconv.ParseInt(minimum, 10, 64)
 		if err != nil {
-			return fmt.Errorf("%s min: parsing int %q: %w", field.Name, min, err)
+			return fmt.Errorf("%s min: parsing int %q: %w", field.Name, minimum, err)
 		}
 
 		got := value.Int()
@@ -326,9 +326,9 @@ func compareMinimum(field reflect.StructField, value reflect.Value, min string) 
 			return fmt.Errorf("%s min: value %d must be >= %d", field.Name, got, limit)
 		}
 	case reflect.Uint, reflect.Uint64:
-		limit, err := strconv.ParseUint(min, 10, 64) //nolint:gomnd
+		limit, err := strconv.ParseUint(minimum, 10, 64)
 		if err != nil {
-			return fmt.Errorf("%s min: parsing uint %q: %w", field.Name, min, err)
+			return fmt.Errorf("%s min: parsing uint %q: %w", field.Name, minimum, err)
 		}
 
 		got := value.Uint()
@@ -336,9 +336,9 @@ func compareMinimum(field reflect.StructField, value reflect.Value, min string) 
 			return fmt.Errorf("%s min: value %d must be >= %d", field.Name, got, limit)
 		}
 	case reflect.Float64:
-		limit, err := strconv.ParseFloat(min, 64) //nolint:gomnd
+		limit, err := strconv.ParseFloat(minimum, 64)
 		if err != nil {
-			return fmt.Errorf("%s min: parsing float %q: %w", field.Name, min, err)
+			return fmt.Errorf("%s min: parsing float %q: %w", field.Name, minimum, err)
 		}
 
 		got := value.Float()
@@ -356,14 +356,14 @@ func compareMinimum(field reflect.StructField, value reflect.Value, min string) 
 	return nil
 }
 
-func compareMaximum(field reflect.StructField, value reflect.Value, max string) error { //nolint:cyclop
+func compareMaximum(field reflect.StructField, value reflect.Value, maximum string) error {
 	if value.Type() == durationType {
-		limit, err := time.ParseDuration(max)
+		limit, err := time.ParseDuration(maximum)
 		if err != nil {
-			return fmt.Errorf("%s max: parsing duration %q: %w", field.Name, max, err)
+			return fmt.Errorf("%s max: parsing duration %q: %w", field.Name, maximum, err)
 		}
 
-		got := value.Interface().(time.Duration)
+		got := time.Duration(value.Int())
 		if got > limit {
 			return fmt.Errorf("%s max: value %s must be <= %s", field.Name, got, limit)
 		}
@@ -371,11 +371,11 @@ func compareMaximum(field reflect.StructField, value reflect.Value, max string) 
 		return nil
 	}
 
-	switch value.Kind() { //nolint:exhaustive
+	switch value.Kind() {
 	case reflect.Int, reflect.Int64:
-		limit, err := strconv.ParseInt(max, 10, 64) //nolint:gomnd
+		limit, err := strconv.ParseInt(maximum, 10, 64)
 		if err != nil {
-			return fmt.Errorf("%s max: parsing int %q: %w", field.Name, max, err)
+			return fmt.Errorf("%s max: parsing int %q: %w", field.Name, maximum, err)
 		}
 
 		got := value.Int()
@@ -383,9 +383,9 @@ func compareMaximum(field reflect.StructField, value reflect.Value, max string) 
 			return fmt.Errorf("%s max: value %d must be <= %d", field.Name, got, limit)
 		}
 	case reflect.Uint, reflect.Uint64:
-		limit, err := strconv.ParseUint(max, 10, 64) //nolint:gomnd
+		limit, err := strconv.ParseUint(maximum, 10, 64)
 		if err != nil {
-			return fmt.Errorf("%s max: parsing uint %q: %w", field.Name, max, err)
+			return fmt.Errorf("%s max: parsing uint %q: %w", field.Name, maximum, err)
 		}
 
 		got := value.Uint()
@@ -393,9 +393,9 @@ func compareMaximum(field reflect.StructField, value reflect.Value, max string) 
 			return fmt.Errorf("%s max: value %d must be <= %d", field.Name, got, limit)
 		}
 	case reflect.Float64:
-		limit, err := strconv.ParseFloat(max, 64) //nolint:gomnd
+		limit, err := strconv.ParseFloat(maximum, 64)
 		if err != nil {
-			return fmt.Errorf("%s max: parsing float %q: %w", field.Name, max, err)
+			return fmt.Errorf("%s max: parsing float %q: %w", field.Name, maximum, err)
 		}
 
 		got := value.Float()
@@ -482,7 +482,7 @@ func validationLength(field reflect.StructField, tag string) (int, bool, error) 
 }
 
 func lengthValue(value reflect.Value) (int, bool) {
-	switch value.Kind() { //nolint:exhaustive
+	switch value.Kind() {
 	case reflect.String:
 		return value.Len(), true
 	case reflect.Slice:
@@ -643,7 +643,7 @@ func splitTagList(tag string) []string {
 
 func validationString(value reflect.Value) string {
 	if value.Type() == durationType {
-		return value.Interface().(time.Duration).String()
+		return time.Duration(value.Int()).String()
 	}
 
 	if value.CanAddr() {
@@ -655,7 +655,7 @@ func validationString(value reflect.Value) string {
 		}
 	}
 
-	switch value.Kind() { //nolint:exhaustive
+	switch value.Kind() {
 	case reflect.String:
 		return value.String()
 	case reflect.Bool:
@@ -665,7 +665,7 @@ func validationString(value reflect.Value) string {
 	case reflect.Uint, reflect.Uint64:
 		return strconv.FormatUint(value.Uint(), 10)
 	case reflect.Float64:
-		return strconv.FormatFloat(value.Float(), 'g', -1, 64) //nolint:gomnd
+		return strconv.FormatFloat(value.Float(), 'g', -1, 64)
 	default:
 		return fmt.Sprint(value.Interface())
 	}
@@ -741,20 +741,30 @@ func (*commandLine) newPrefix(sf reflect.StructField, prefix string) string {
 	return sf.Name
 }
 
-func (cl *commandLine) parseValue(kind reflect.Kind, varPointer any, flag, value, usage string) error { //nolint:cyclop
-	switch kind { //nolint:exhaustive
+func (cl *commandLine) parseValue(kind reflect.Kind, varPointer any, flag, value, usage string) error {
+	switch kind {
 	case reflect.Bool:
-		return cl.parseBool(varPointer.(*bool), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*bool); ok {
+			return cl.parseBool(p, flag, value, usage)
+		}
 	case reflect.String:
-		cl.flagSet.StringVar(varPointer.(*string), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*string); ok {
+			cl.flagSet.StringVar(p, flag, value, usage)
 
-		return nil
+			return nil
+		}
 	case reflect.Uint:
-		return cl.parseUint(varPointer.(*uint), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*uint); ok {
+			return cl.parseUint(p, flag, value, usage)
+		}
 	case reflect.Uint64:
-		return cl.parseUint64(varPointer.(*uint64), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*uint64); ok {
+			return cl.parseUint64(p, flag, value, usage)
+		}
 	case reflect.Int:
-		return cl.parseInt(varPointer.(*int), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*int); ok {
+			return cl.parseInt(p, flag, value, usage)
+		}
 	case reflect.Int64:
 		switch varPointer := varPointer.(type) {
 		case *time.Duration:
@@ -763,7 +773,9 @@ func (cl *commandLine) parseValue(kind reflect.Kind, varPointer any, flag, value
 			return cl.parseInt64(varPointer, flag, value, usage)
 		}
 	case reflect.Float64:
-		return cl.parseFloat64(varPointer.(*float64), flag, value, usage) //nolint:forcetypeassert
+		if p, ok := varPointer.(*float64); ok {
+			return cl.parseFloat64(p, flag, value, usage)
+		}
 	case reflect.Struct:
 		switch varPointer := varPointer.(type) {
 		case *URL:
@@ -807,7 +819,7 @@ func (cl *commandLine) parseUint(p *uint, flag, value, usage string) error {
 		return nil
 	}
 
-	val, err := strconv.ParseUint(value, 10, 32) //nolint:gomnd
+	val, err := strconv.ParseUint(value, 10, 32)
 	if err != nil {
 		return fmt.Errorf("parsing uint %q: %w", value, err)
 	}
@@ -824,7 +836,7 @@ func (cl *commandLine) parseUint64(p *uint64, flag, value, usage string) error {
 		return nil
 	}
 
-	val, err := strconv.ParseUint(value, 10, 64) //nolint:gomnd
+	val, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		return fmt.Errorf("parsing uint64 %q: %w", value, err)
 	}
@@ -858,7 +870,7 @@ func (cl *commandLine) parseInt64(p *int64, flag, value, usage string) error {
 		return nil
 	}
 
-	val, err := strconv.ParseInt(value, 10, 64) //nolint:gomnd
+	val, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return fmt.Errorf("parsing int64 %q: %w", value, err)
 	}
@@ -892,7 +904,7 @@ func (cl *commandLine) parseFloat64(p *float64, flag, value, usage string) error
 		return nil
 	}
 
-	val, err := strconv.ParseFloat(value, 64) //nolint:gomnd
+	val, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fmt.Errorf("parsing float64 %q: %w", value, err)
 	}
@@ -942,13 +954,13 @@ func (cl *commandLine) parseIntSlice(p *IntSlice, flag, value, usage string) err
 
 func (cl *commandLine) parseURL(p *URL, flag, value, usage string) error {
 	if value == "" {
-		*p = URL{} //nolint:exhaustruct
+		*p = URL{}
 		cl.flagSet.Var(p, flag, usage)
 
 		return nil
 	}
 
-	u := &URL{} //nolint:exhaustruct
+	u := &URL{}
 
 	if err := u.Set(value); err != nil {
 		return err
@@ -962,13 +974,13 @@ func (cl *commandLine) parseURL(p *URL, flag, value, usage string) error {
 
 func (cl *commandLine) parseTime(p *Time, flag, value, usage string) error {
 	if value == "" {
-		*p = Time{} //nolint:exhaustruct
+		*p = Time{}
 		cl.flagSet.Var(p, flag, usage)
 
 		return nil
 	}
 
-	t := &Time{} //nolint:exhaustruct
+	t := &Time{}
 
 	if err := t.Set(value); err != nil {
 		return err
@@ -998,7 +1010,7 @@ func (cl *commandLine) exit(err error) error {
 		}
 
 		_, _ = fmt.Fprintf(cl.output, "bee: %v\n", err)
-		osExit(2) //nolint:gomnd
+		osExit(2)
 	case flag.PanicOnError:
 		panic(err)
 	}

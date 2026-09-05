@@ -75,7 +75,7 @@ func (f *IntSlice) String() string {
 
 		s := make([]string, 0, len(*f))
 		for _, i := range *f {
-			s = append(s, fmt.Sprintf("%d", i))
+			s = append(s, strconv.Itoa(i))
 		}
 
 		return fmt.Sprintf("[%s]", strings.Join(s, `,`))

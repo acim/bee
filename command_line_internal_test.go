@@ -74,7 +74,7 @@ func TestParse_errors(t *testing.T) {
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -85,6 +85,18 @@ func TestParse_errors(t *testing.T) {
 			err := cl.parse(tt.in, tt.flags)
 			assertError(t, err, tt.wantErr)
 		})
+	}
+}
+
+func TestParseValueRejectsMismatchedPointer(t *testing.T) {
+	t.Parallel()
+
+	cl := newCommandLine("test")
+	value := "not a bool"
+
+	err := cl.parseValue(reflect.Bool, &value, "enabled", "true", "enabled")
+	if !errors.Is(err, ErrUnsupportedType) {
+		t.Fatalf("want unsupported type error, got %v", err)
 	}
 }
 
@@ -261,7 +273,8 @@ func TestPanicOnErrorPanics(t *testing.T) {
 	cl.errorHandling = flag.PanicOnError
 
 	defer func() {
-		if got := recover(); got != flag.ErrHelp {
+		got, ok := recover().(error)
+		if !ok || !errors.Is(got, flag.ErrHelp) {
 			t.Fatalf("want panic %v, got %v", flag.ErrHelp, got)
 		}
 	}()
@@ -333,7 +346,7 @@ func TestParseHelpBypassesValidation(t *testing.T) {
 	}
 }
 
-func TestParse_usage(t *testing.T) { //nolint:funlen
+func TestParse_usage(t *testing.T) {
 	t.Parallel()
 
 	ws := regexp.MustCompile(`\s+`)
@@ -491,7 +504,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 			config: &struct {
 				DailyTemperatures IntSlice `def:"10,-5,0"`
 			}{},
-			want: "Usage of test: -daily-temperatures value daily temperatures (env TEST_DAILY_TEMPERATURES) (default [10,-5,0])", //nolint:lll
+			want: "Usage of test: -daily-temperatures value daily temperatures (env TEST_DAILY_TEMPERATURES) (default [10,-5,0])",
 		},
 		"int-slice-help-with-invalid-def": {
 			config: &struct {
@@ -551,7 +564,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -578,7 +591,7 @@ func TestParse_usage(t *testing.T) { //nolint:funlen
 	}
 }
 
-func TestParse_valid(t *testing.T) { //nolint:funlen
+func TestParse_valid(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -630,7 +643,7 @@ func TestParse_valid(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -1211,7 +1224,7 @@ func TestParse_environment_errors(t *testing.T) {
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
@@ -1226,7 +1239,7 @@ func TestParse_environment_errors(t *testing.T) {
 	}
 }
 
-func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maintidx
+func TestParse_environment(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -1467,7 +1480,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "", false
 			},
-			wantURL: URL{}, //nolint:exhaustruct
+			wantURL: URL{},
 		},
 		"url-env-not-set-def-set": {
 			config: &struct {
@@ -1476,7 +1489,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "", false
 			},
-			wantURL: URL{URL: &url.URL{Scheme: "http", Host: "localhost"}}, //nolint:exhaustruct
+			wantURL: URL{URL: &url.URL{Scheme: "http", Host: "localhost"}},
 		},
 		"url-env-set": {
 			config: &struct {
@@ -1485,7 +1498,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 			lookupEnvFunc: func(env string) (string, bool) {
 				return "https://api.example.com/v1", true
 			},
-			wantURL: URL{URL: &url.URL{Scheme: "https", Host: "api.example.com", Path: "/v1"}}, //nolint:exhaustruct
+			wantURL: URL{URL: &url.URL{Scheme: "https", Host: "api.example.com", Path: "/v1"}},
 		},
 		"string-slice-env-not-set-def-not-set": {
 			config: &struct {
@@ -1543,7 +1556,7 @@ func TestParse_environment(t *testing.T) { //nolint:cyclop,gocognit,funlen,maint
 		},
 	}
 
-	for n, tt := range tests { //nolint:paralleltest
+	for n, tt := range tests {
 
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()

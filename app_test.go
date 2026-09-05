@@ -46,14 +46,14 @@ func TestAppRootReceivesRuntimeContextWithFields(t *testing.T) {
 
 	var gotConfig appTestConfig
 	var gotLog *slog.Logger
-	var gotContext context.Context
+	var gotContext bool
 	var goRan bool
 	started := make(chan struct{})
 
 	app.Root("Run service", func(ctx *Ctx[appTestConfig]) error {
 		gotConfig = *ctx.Cfg
 		gotLog = ctx.Log
-		gotContext = ctx.Ctx
+		gotContext = ctx.Ctx != nil
 		ctx.Go("short task", func(run context.Context) error {
 			goRan = run == ctx.Ctx
 			close(started)
@@ -80,7 +80,7 @@ func TestAppRootReceivesRuntimeContextWithFields(t *testing.T) {
 	if gotLog != logger {
 		t.Fatal("want handler context to expose injected logger")
 	}
-	if gotContext == nil {
+	if !gotContext {
 		t.Fatal("want handler context to expose application context")
 	}
 	if !goRan {

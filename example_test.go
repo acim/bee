@@ -26,7 +26,7 @@ func Example_basic() {
 		Start bee.Time
 	}
 
-	cfg := config{} //nolint:exhaustruct
+	cfg := config{}
 
 	args := os.Args
 	defer func() {
@@ -73,7 +73,7 @@ func Example_advanced() {
 		Start bee.Time `def:"2002-10-02T10:00:00-05:00"`
 	}
 
-	cfg := config{} //nolint:exhaustruct
+	cfg := config{}
 
 	args := os.Args
 	defer func() {
@@ -108,7 +108,7 @@ func Example_commandTree() {
 	}()
 	os.Args = []string{"maia", "start", "api"}
 
-	cfg := config{} //nolint:exhaustruct
+	cfg := config{}
 	app := bee.New(
 		"maia",
 		&cfg,
