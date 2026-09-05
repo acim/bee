@@ -54,8 +54,7 @@ linters:
   exclusions:
     rules:
       # noctx reports httptest.NewRequest and http.Get, which are idiomatic in
-      # tests. Measured across five repositories it found 463 test cases and no
-      # production one, so it guards production only.
+      # tests, so it guards production code only.
       - path: _test\.go
         linters:
           - noctx

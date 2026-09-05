@@ -36,6 +36,8 @@ func assertError(t *testing.T, err error, want string) {
 func TestParse_errors(t *testing.T) {
 	t.Parallel()
 
+	type level string
+
 	tests := map[string]struct {
 		in      any
 		flags   []string
@@ -65,6 +67,13 @@ func TestParse_errors(t *testing.T) {
 			flags:   []string{""},
 			wantErr: "Port def: parsing value: type not supported: int16",
 		},
+		"named-scalar-type": {
+			in: &struct {
+				Level level `def:"debug"`
+			}{},
+			flags:   []string{},
+			wantErr: "Level def: parsing value: type not supported: string",
+		},
 		"---help": {
 			in: &struct {
 				Port int
@@ -75,7 +84,6 @@ func TestParse_errors(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -91,12 +99,29 @@ func TestParse_errors(t *testing.T) {
 func TestParseValueRejectsMismatchedPointer(t *testing.T) {
 	t.Parallel()
 
-	cl := newCommandLine("test")
-	value := "not a bool"
+	tests := map[string]struct {
+		kind       reflect.Kind
+		mismatched any
+	}{
+		"bool":    {kind: reflect.Bool, mismatched: new(string)},
+		"float64": {kind: reflect.Float64, mismatched: new(int)},
+		"int":     {kind: reflect.Int, mismatched: new(float64)},
+		"string":  {kind: reflect.String, mismatched: new(bool)},
+		"uint":    {kind: reflect.Uint, mismatched: new(uint64)},
+		"uint64":  {kind: reflect.Uint64, mismatched: new(uint)},
+	}
 
-	err := cl.parseValue(reflect.Bool, &value, "enabled", "true", "enabled")
-	if !errors.Is(err, ErrUnsupportedType) {
-		t.Fatalf("want unsupported type error, got %v", err)
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cl := newCommandLine("test")
+
+			err := cl.parseValue(tt.kind, tt.mismatched, "value", "1", "value")
+			if !errors.Is(err, ErrUnsupportedType) {
+				t.Fatalf("want unsupported type error, got %v", err)
+			}
+		})
 	}
 }
 
@@ -273,9 +298,10 @@ func TestPanicOnErrorPanics(t *testing.T) {
 	cl.errorHandling = flag.PanicOnError
 
 	defer func() {
-		got, ok := recover().(error)
+		recovered := recover()
+		got, ok := recovered.(error)
 		if !ok || !errors.Is(got, flag.ErrHelp) {
-			t.Fatalf("want panic %v, got %v", flag.ErrHelp, got)
+			t.Fatalf("want panic %v, got %v", flag.ErrHelp, recovered)
 		}
 	}()
 
@@ -565,7 +591,6 @@ func TestParse_usage(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -644,7 +669,6 @@ func TestParse_valid(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -1225,7 +1249,6 @@ func TestParse_environment_errors(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -1557,7 +1580,6 @@ func TestParse_environment(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 

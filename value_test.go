@@ -43,7 +43,6 @@ func TestStringSlice(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -108,7 +107,6 @@ func TestIntSlice(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -178,7 +176,6 @@ func TestURL(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 
@@ -279,7 +276,6 @@ func TestTime(t *testing.T) {
 	}
 
 	for n, tt := range tests {
-
 		t.Run(n, func(t *testing.T) {
 			t.Parallel()
 

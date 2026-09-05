@@ -32,6 +32,9 @@ Besides the types supported by flag package, this package provides additional ty
 - **bee.URL**
 - **bee.Time** - RFC3339 time
 
+Named variants of supported scalar types are rejected with `bee.ErrUnsupportedType`
+rather than coerced to their underlying type.
+
 ## Order of precedence:
 
 - command line options
