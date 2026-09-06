@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-97.0%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-96.8%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -167,21 +167,70 @@ command takes precedence over the root handler.
 
 ### Graceful shutdown
 
-`ctx.HTTPServer` starts the server as a supervised goroutine. When the app
-context is cancelled, bee calls `server.Shutdown` with a fresh shutdown context
-controlled by `WithShutdownTimeout`.
+`ctx.HTTPServer` starts the server as a supervised goroutine. Cancellation stops
+intake and drains active requests using a fresh context. The drain timeout
+falls back to `WithShutdownTimeout` (five seconds by default); give HTTP its
+own budget when requests need longer:
 
-Registered closers run after supervised goroutines finish. This means HTTP
-servers stop accepting new requests and drain in-flight requests before shared
-dependencies are closed.
+```go
+app := bee.New("api", &cfg, bee.WithShutdownTimeout(5*time.Second))
+app.Root("serve", func(ctx *bee.Ctx[Config]) error {
+    // Construct server and register dependencies here.
+    ctx.HTTPServer("http api", server, bee.WithHTTPDrainTimeout(130*time.Second))
+    return nil
+})
+```
 
-For `ctx.HTTPServer("http api", server)`, `ctx.Register("database", closeDB)`,
-and `ctx.Register("queue", closeQueue)`, shutdown order is:
+If the HTTP drain deadline expires, Bee cancels remaining request contexts,
+closes their connections, and **waits for handlers to return before closing
+registered dependencies**. The shutdown error is returned by `RunE`.
+Request context values and client cancellation remain intact. Late requests
+cannot enter the application handler once forced shutdown begins. Hijacked
+connections remain the application's responsibility.
 
-1. app context is cancelled
-2. HTTP server starts graceful shutdown
-3. bee waits for supervised goroutines, including HTTP servers, to finish
-4. registered closers run in reverse order: queue, then database
+Registered closers run in reverse order after supervised work finishes. Each
+closer receives its own `WithShutdownTimeout` budget; it is not a global process
+deadline and does not forcibly stop a closer that ignores its context. Budget
+for HTTP draining, finalization, and all sequential closers in the process
+supervisor's termination grace. Handlers that ignore cancellation can keep Bee
+waiting; the process supervisor owns the hard termination deadline.
+
+### Cancellation-aware command input
+
+Use `ctx.Input(os.Stdin)` instead of scanning stdin directly. It returns an
+`*Input` implementing `io.ReadCloser`; cancellation unblocks pending pipe and
+terminal reads and returns the context error. No additional signal handler or
+reader goroutine is needed in the application.
+
+```go
+input, err := ctx.Input(os.Stdin)
+if err != nil {
+    return err
+}
+defer func() {
+    if err := input.Close(); err != nil {
+        ctx.Log.Warn("close input", bee.SlogError(err))
+    }
+}()
+scanner := bufio.NewScanner(input)
+for scanner.Scan() {
+    // Handle scanner.Text().
+}
+if errors.Is(scanner.Err(), context.Canceled) {
+    return nil // Treat cancellation while waiting for input as a clean exit.
+}
+return scanner.Err()
+```
+
+`Close` is idempotent and leaves the original file open. Input temporarily owns
+reading and file-status flags: do not read, close, or change the original file
+until Input has been closed. Duplicate descriptors share their read offset.
+Linux, macOS, FreeBSD, OpenBSD, NetBSD, and DragonFly are supported; other
+platforms return `errors.ErrUnsupported`. Regular files and `/dev/null` work
+for redirected input, but a kernel disk read in progress cannot be interrupted.
+Unsupported blocking devices are rejected instead of promising cancellation.
+The pipe tests run in Go; terminal signal integration tests additionally use
+Python 3's standard `pty` module and report a skip when Python is unavailable.
 
 ### Migration from `NewService`
 

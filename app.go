@@ -151,8 +151,8 @@ func (c Ctx[T]) Go(name string, fn func(context.Context) error) {
 }
 
 // HTTPServer starts an HTTP server as a supervised goroutine.
-func (c Ctx[T]) HTTPServer(name string, server *http.Server) {
-	c.appRuntime().HTTPServer(name, server)
+func (c Ctx[T]) HTTPServer(name string, server *http.Server, options ...HTTPOption) {
+	c.appRuntime().HTTPServer(name, server, options...)
 }
 
 // Exit records a fatal application result and cancels the application context.
@@ -227,40 +227,42 @@ func (a *App[T]) Go(name string, fn func(context.Context) error) {
 	}()
 }
 
-// HTTPServer starts an HTTP server as a supervised goroutine and shuts it down
-// when the application context is cancelled.
-func (a *App[T]) HTTPServer(name string, server *http.Server) {
+// HTTPServer starts an HTTP server as a supervised goroutine. Cancellation stops
+// intake and allows requests to drain for WithHTTPDrainTimeout, falling back to
+// WithShutdownTimeout. If draining fails,
+// Bee cancels remaining request contexts and closes their connections, then waits
+// for handlers to return before registered dependencies close. A handler that
+// ignores cancellation can delay shutdown indefinitely; the process supervisor
+// owns the hard termination deadline. Hijacked connections remain caller-owned.
+// Configure server before calling HTTPServer; do not reuse it afterward.
+func (a *App[T]) HTTPServer(name string, server *http.Server, options ...HTTPOption) {
+	settings := httpOptions{drainTimeout: a.timeout}
+	for _, option := range options {
+		option(&settings)
+	}
+	lifecycle := newHTTPDrain(server)
 	a.Go(name, func(ctx context.Context) error {
-		shutdownStarted := make(chan struct{})
-		shutdownErr := make(chan error, 1)
 		serveDone := make(chan struct{})
-
+		shutdownDone := make(chan error, 1)
 		go func() {
+			var err error
 			select {
 			case <-ctx.Done():
-				close(shutdownStarted)
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), a.timeout)
-				defer cancel()
-				shutdownErr <- server.Shutdown(shutdownCtx)
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), settings.drainTimeout)
+				err = server.Shutdown(shutdownCtx)
+				cancel()
 			case <-serveDone:
 			}
+			lifecycle.finish()
+			shutdownDone <- err
 		}()
-
 		err := server.ListenAndServe()
 		close(serveDone)
+		shutdownErr := <-shutdownDone
 		if errors.Is(err, http.ErrServerClosed) {
-			select {
-			case <-shutdownStarted:
-				if err := <-shutdownErr; err != nil {
-					return err
-				}
-			default:
-			}
-
-			return nil
+			err = nil
 		}
-
-		return err
+		return errors.Join(err, shutdownErr)
 	})
 }
 
