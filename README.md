@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-96.8%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-96.9%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -322,6 +322,17 @@ app.Root("Run service", func(ctx *bee.Ctx[Config]) error {
 	return nil
 })
 ```
+
+To omit access logs for probe endpoints, configure exact paths:
+
+```go
+mws.Add(bee.SlogLogger(ctx.Log, bee.WithSkipPaths([]string{"/health", "/ready"})))
+```
+
+Skipped requests still reach their handlers, but produce no access log even if
+the response is an error. Matching uses `req.URL.Path`, so query strings are
+ignored and `/health/` does not match `/health`. Nil or empty path lists skip
+nothing; without the option, all requests are logged.
 
 Route-specific behavior, such as auth or CORS for only part of the service,
 should usually wrap a sub-mux or handler before mounting it on the root mux:

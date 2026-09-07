@@ -104,6 +104,64 @@ func TestSlogLogger(t *testing.T) {
 	}
 }
 
+func TestSlogLoggerSkipPaths(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		path    string
+		options []SlogLoggerOption
+		status  int
+		wantLog bool
+	}{
+		{name: "default logs probes", path: "/health", status: http.StatusOK, wantLog: true},
+		{name: "nil paths", path: "/health", options: []SlogLoggerOption{WithSkipPaths(nil)}, status: http.StatusOK, wantLog: true},
+		{name: "empty paths", path: "/health", options: []SlogLoggerOption{WithSkipPaths([]string{})}, status: http.StatusOK, wantLog: true},
+		{name: "health", path: "/health", options: []SlogLoggerOption{WithSkipPaths([]string{"/health", "/ready"})}, status: http.StatusOK},
+		{name: "ready", path: "/ready", options: []SlogLoggerOption{WithSkipPaths([]string{"/health", "/ready"})}, status: http.StatusOK},
+		{name: "query string", path: "/health?full=true", options: []SlogLoggerOption{WithSkipPaths([]string{"/health"})}, status: http.StatusOK},
+		{name: "failed probe", path: "/ready", options: []SlogLoggerOption{WithSkipPaths([]string{"/ready"})}, status: http.StatusServiceUnavailable},
+		{name: "ordinary request", path: "/things", options: []SlogLoggerOption{WithSkipPaths([]string{"/health"})}, status: http.StatusCreated, wantLog: true},
+		{name: "path prefix", path: "/health/details", options: []SlogLoggerOption{WithSkipPaths([]string{"/health"})}, status: http.StatusOK, wantLog: true},
+		{name: "trailing slash", path: "/health/", options: []SlogLoggerOption{WithSkipPaths([]string{"/health"})}, status: http.StatusOK, wantLog: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+			log := slog.New(slog.NewJSONHandler(&logs, nil))
+			calls := 0
+			handler := SlogLogger(log, tt.options...)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				w.Header().Set("X-Probe", "checked")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte("response"))
+			}))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			if calls != 1 || rec.Code != tt.status || rec.Body.String() != "response" || rec.Header().Get("X-Probe") != "checked" {
+				t.Fatalf("handler response changed: calls=%d status=%d body=%q headers=%v", calls, rec.Code, rec.Body.String(), rec.Header())
+			}
+
+			if !tt.wantLog {
+				if logs.Len() != 0 {
+					t.Fatalf("want no log, got %s", logs.String())
+				}
+				return
+			}
+
+			var entry map[string]any
+			if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+				t.Fatalf("decode log entry: %v", err)
+			}
+			assertLogValue(t, entry, "uri", tt.path)
+			assertLogValue(t, entry, "status", float64(tt.status))
+		})
+	}
+}
+
 func assertLogValue(t *testing.T, entry map[string]any, key string, want any) {
 	t.Helper()
 

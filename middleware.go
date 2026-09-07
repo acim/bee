@@ -35,10 +35,38 @@ func (ms *Middlewares) Wrap(mux *http.ServeMux) http.Handler {
 	return wrapped
 }
 
-// SlogLogger is a middleware for slog logging.
-func SlogLogger(log *slog.Logger) func(next http.Handler) http.Handler {
+type slogLoggerOptions struct {
+	skipPaths []string
+}
+
+// SlogLoggerOption configures SlogLogger middleware.
+type SlogLoggerOption func(*slogLoggerOptions)
+
+// WithSkipPaths skips access logs for exact URL paths, regardless of response status.
+// Query strings are ignored. Nil or empty paths skip nothing.
+// The paths are copied when the option is created.
+func WithSkipPaths(paths []string) SlogLoggerOption {
+	paths = slices.Clone(paths)
+
+	return func(opts *slogLoggerOptions) {
+		opts.skipPaths = paths
+	}
+}
+
+// SlogLogger is a middleware for slog logging. By default, it logs every request.
+func SlogLogger(log *slog.Logger, options ...SlogLoggerOption) func(next http.Handler) http.Handler {
+	var opts slogLoggerOptions
+	for _, option := range options {
+		option(&opts)
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			if slices.Contains(opts.skipPaths, req.URL.Path) {
+				next.ServeHTTP(res, req)
+				return
+			}
+
 			writer := middleware.NewWrapResponseWriter(res, req.ProtoMajor)
 			start := time.Now()
 
