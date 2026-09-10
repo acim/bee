@@ -39,6 +39,8 @@ type commandLine struct {
 	errorHandling flag.ErrorHandling
 	help          bool
 	required      []requiredField
+	commandGroup  string
+	commandGroups []string
 }
 
 func newCommandLine(name string) *commandLine {
@@ -59,7 +61,13 @@ func (cl *commandLine) parse(config any, flags []string) error {
 	cl.required = nil
 	cl.help = false
 
-	if err := cl.subParse(config, flags, ""); err != nil {
+	fields, err := cl.configFields(config)
+	if err != nil {
+		return cl.exit(err)
+	}
+
+	cl.parseHelp(flags)
+	if err := cl.parseFields(fields); err != nil {
 		return cl.exit(err)
 	}
 
@@ -71,61 +79,20 @@ func (cl *commandLine) parse(config any, flags []string) error {
 		return cl.exit(err)
 	}
 
-	if err := cl.validate(config); err != nil {
+	if err := cl.validateFields(fields); err != nil {
 		return cl.exit(err)
 	}
 
 	return nil
 }
 
-func (cl *commandLine) subParse(config any, flags []string, prefix string) error {
-	cl.parseHelp(flags)
-
-	v := reflect.ValueOf(config)
-
-	if !v.IsValid() {
-		return ErrInvalidConfigType
-	}
-
-	if v.Kind() != reflect.Pointer || v.IsNil() {
-		return ErrInvalidConfigType
-	}
-
-	t := v.Type()
-
-	if t.Elem().Kind() != reflect.Struct {
-		return ErrInvalidConfigType
-	}
-
-	v = v.Elem()
-
-	for i := range v.NumField() {
-		field := t.Elem().Field(i)
-
-		flagName := cl.flagName(field, prefix)
-
-		envVarName := cl.envVarName(field, prefix)
-
-		usage := cl.usage(field, envVarName, prefix)
-
-		fieldValue := v.Field(i)
-		if field.PkgPath != "" || !fieldValue.CanAddr() || !fieldValue.Addr().CanInterface() {
-			return ErrInvalidConfigType
-		}
-
-		p := fieldValue.Addr().Interface()
-
-		// Recurse if got struct which is not of URL type
-		_, oku := p.(*URL)
-		_, okt := p.(*Time)
-
-		if field.Type.Kind() == reflect.Struct && !oku && !okt {
-			if err := cl.subParse(p, flags, cl.newPrefix(field, prefix)); err != nil {
-				return err
-			}
-
-			continue
-		}
+func (cl *commandLine) parseFields(fields []configField) error {
+	for _, item := range fields {
+		field := item.field
+		flagName := cl.flagName(field, item.prefix)
+		envVarName := cl.envVarName(field, item.prefix)
+		usage := cl.usage(field, envVarName, item.prefix)
+		p := item.value.Addr().Interface()
 
 		if err := cl.parseRequired(field, flagName, envVarName); err != nil {
 			return err
@@ -204,55 +171,16 @@ func (cl *commandLine) validateRequired() error {
 	return nil
 }
 
-func (cl *commandLine) validate(config any) error {
+func (cl *commandLine) validateFields(fields []configField) error {
 	if cl.help {
 		return nil
 	}
-
-	v := reflect.ValueOf(config)
-	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct {
-		return ErrInvalidConfigType
-	}
-
-	return cl.validateStruct(v.Elem())
-}
-
-func (cl *commandLine) validateStruct(v reflect.Value) error {
-	t := v.Type()
-	for i := range v.NumField() {
-		field := t.Field(i)
-		value := v.Field(i)
-		if field.PkgPath != "" {
-			return ErrInvalidConfigType
-		}
-
-		if value.Kind() == reflect.Struct && !isSpecialStructValue(value) {
-			if err := cl.validateStruct(value); err != nil {
-				return err
-			}
-
-			continue
-		}
-
-		if err := cl.validateField(field, value); err != nil {
+	for _, item := range fields {
+		if err := cl.validateField(item.field, item.value); err != nil {
 			return err
 		}
 	}
-
 	return nil
-}
-
-func isSpecialStructValue(v reflect.Value) bool {
-	if !v.CanAddr() {
-		return false
-	}
-
-	switch v.Addr().Interface().(type) {
-	case *URL, *Time:
-		return true
-	default:
-		return false
-	}
 }
 
 func (cl *commandLine) validateField(field reflect.StructField, value reflect.Value) error {

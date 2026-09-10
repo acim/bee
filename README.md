@@ -5,7 +5,7 @@ Microservices oriented [12-factor](https://12factor.net) Go library for parsing 
 [![pipeline](https://github.com/acim/bee/actions/workflows/pipeline.yml/badge.svg)](https://github.com/acim/bee/actions/workflows/pipeline.yml)
 [![reference](https://pkg.go.dev/badge/go.acim.net/bee.svg)](https://pkg.go.dev/go.acim.net/bee)
 [![report](https://goreportcard.com/badge/go.acim.net/bee)](https://goreportcard.com/report/go.acim.net/bee)
-![coverage](https://img.shields.io/badge/coverage-96.9%25-brightgreen?style=flat&logo=go)
+![coverage](https://img.shields.io/badge/coverage-97.2%25-brightgreen?style=flat&logo=go)
 
 This package in intended to be used to parse command line arguments and environment variables into an arbitrary config struct.
 This struct may contain multiple nested structs, they all will be processed recursively. Names of the flags and environment
@@ -20,6 +20,7 @@ define default value.
 - **help** - override generated flag description
 - **def** - override default (zero) value
 - **req** - require the value to be supplied by environment variable or command line flag
+- **cmd** - scope a field or nested struct to comma-separated top-level command names
 
 ## Important: all struct fields should be exported.
 
@@ -164,6 +165,77 @@ Empty and flags-only invocations run the root handler, while named commands
 continue to dispatch normally. Top-level help still prints usage without
 running the root handler. If `WithDefaultCommand` is configured, its named
 command takes precedence over the root handler.
+
+### Command-scoped configuration
+
+Use `cmd` when a shared config contains settings that only some commands need:
+
+```go
+type Config struct {
+	LogLevel        string `def:"INFO"`                         // global
+	AuthCodeHMACKey string `cmd:"api" req:"" nonzero:""`        // API only
+	DatabaseURL     string `cmd:"api,sender" req:"" nonzero:""` // shared
+}
+```
+
+Register both `api` and `sender` with `app.Cmd`. Running `sender` then requires
+`DatabaseURL`, but never reads, defaults, registers a flag for, or validates
+`AuthCodeHMACKey`. Inactive fields retain their original values. Passing an
+inactive flag is an unknown-flag error.
+
+A scope on a nested struct applies to all its descendants. An explicit child
+scope can narrow its parent's scope:
+
+```go
+type Config struct {
+    LogLevel string `def:"INFO"`
+    Server struct {
+        Port int `def:"8080" min:"1" max:"65535"`
+        TLS struct {
+            Certificate string `req:"" nonzero:""`
+        } `cmd:"serve"`
+    } `cmd:"serve,import"`
+}
+
+cfg := Config{}
+app := bee.New("maia", &cfg, bee.WithDefaultCommand("serve something"))
+serve := app.Cmd("serve", "Serve") // the parent need not have a handler
+serve.Cmd("something", "First server", runSomething)
+serve.Cmd("something-else", "Second server", runSomethingElse)
+app.Cmd("import", "Import data", runImport)
+app.Run()
+```
+
+Both `maia serve something` and `maia serve something-else` activate all the
+`Server` fields. `maia import` activates `Server.Port` but leaves `Server.TLS`
+untouched. A runnable `serve` parent uses the same scope as its descendants.
+Explicit and default commands behave identically, including nested defaults.
+A root handler has no command group and receives global fields only.
+Only the top-level name selects the scope: `cmd:"serve"` applies to
+`maia serve something`, but not to `maia run serve`, whose group is `run`.
+
+Command scopes do not affect option names: `Server.Port` still uses
+`-server-port` and `MAIA_SERVER_PORT`; explicit `flag` and `env` overrides also
+stay the same. Comma-separated scope names allow surrounding whitespace.
+Every name must exactly identify a registered top-level command. Matching is
+literal: a registered name such as `a/b` or `*` is supported, but `/` does not
+separate command levels and `*` never matches other names. Full command paths
+and wildcard matching are unsupported. Empty entries, unknown names (including
+child-only names), and child scopes outside the parent scope are errors, even
+on inactive fields. Diagnostics include the nested field path and
+invalid scope. All scope declarations are checked before configuration values
+are applied.
+
+Command help shows global fields and fields active for that command's group,
+without requiring runtime values. Top-level `-help` shows global flags and the
+command overview, even when a default command is configured. Existing validation
+tags, including the incompatibility of `req` and `def`, apply to active fields.
+
+This feature changes no public Go signatures. Configurations without `cmd` tags
+keep their existing behavior. To migrate a command-specific secret, add its
+`cmd` scope, remove any dummy `def`, and use `req:"" nonzero:""`. Applications
+that already use `cmd` tags for another purpose must remove or adapt those tags,
+since Bee now interprets them.
 
 ### Graceful shutdown
 
