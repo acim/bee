@@ -65,7 +65,7 @@ func (cl *commandLine) fieldScope(field reflect.StructField, path string, inheri
 	scope := strings.Split(raw, ",")
 	for i, name := range scope {
 		name = strings.TrimSpace(name)
-		if name == "" || strings.ContainsAny(name, " /\\*?\t\r\n") || !slices.Contains(cl.commandGroups, name) {
+		if name == "" || !slices.Contains(cl.commandGroups, name) {
 			return nil, fmt.Errorf("%s cmd: invalid scope %q: %q must name a registered top-level command", path, raw, name)
 		}
 		if inherited != nil && !slices.Contains(inherited, name) {

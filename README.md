@@ -172,9 +172,9 @@ Use `cmd` when a shared config contains settings that only some commands need:
 
 ```go
 type Config struct {
-    LogLevel       string `def:"INFO"`                         // global
-    AuthCodeHMACKey string `cmd:"api" req:"" nonzero:""`       // API only
-    DatabaseURL    string `cmd:"api,sender" req:"" nonzero:""` // shared
+	LogLevel        string `def:"INFO"`                         // global
+	AuthCodeHMACKey string `cmd:"api" req:"" nonzero:""`        // API only
+	DatabaseURL     string `cmd:"api,sender" req:"" nonzero:""` // shared
 }
 ```
 
@@ -211,13 +211,18 @@ Both `maia serve something` and `maia serve something-else` activate all the
 untouched. A runnable `serve` parent uses the same scope as its descendants.
 Explicit and default commands behave identically, including nested defaults.
 A root handler has no command group and receives global fields only.
+Only the top-level name selects the scope: `cmd:"serve"` applies to
+`maia serve something`, but not to `maia run serve`, whose group is `run`.
 
 Command scopes do not affect option names: `Server.Port` still uses
 `-server-port` and `MAIA_SERVER_PORT`; explicit `flag` and `env` overrides also
 stay the same. Comma-separated scope names allow surrounding whitespace.
-Every name must identify a registered top-level command. Empty entries, full
-paths, wildcards, unknown names, and child scopes outside the parent scope are
-errors, even on inactive fields. Diagnostics include the nested field path and
+Every name must exactly identify a registered top-level command. Matching is
+literal: a registered name such as `a/b` or `*` is supported, but `/` does not
+separate command levels and `*` never matches other names. Full command paths
+and wildcard matching are unsupported. Empty entries, unknown names (including
+child-only names), and child scopes outside the parent scope are errors, even
+on inactive fields. Diagnostics include the nested field path and
 invalid scope. All scope declarations are checked before configuration values
 are applied.
 

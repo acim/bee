@@ -166,6 +166,91 @@ func TestCommandScopesInvalidDeclarations(t *testing.T) {
 	}
 }
 
+func TestCommandScopesRebuildGroups(t *testing.T) {
+	// Declaration errors stop before flag registration, allowing repeated attempts
+	// to exercise scope setup without depending on reusable application lifecycles.
+	cfg := struct {
+		Value string `cmd:"missing"`
+	}{}
+	app := scopeApp(&cfg, &bytes.Buffer{})
+	for attempt := 1; attempt <= 2; attempt++ {
+		if err := app.RunE("sender"); err == nil || !strings.Contains(err.Error(), "Value cmd") {
+			t.Fatalf("attempt %d: expected scope declaration error, got %v", attempt, err)
+		}
+		if got := len(app.commandLine.commandGroups); got != 3 {
+			t.Fatalf("attempt %d: got %d command groups, want 3", attempt, got)
+		}
+	}
+}
+
+func TestCommandScopesLiteralNames(t *testing.T) {
+	type config struct {
+		Slash     string `cmd:"a/b" def:"active"`
+		Backslash string `cmd:"a\\b" def:"active"`
+		Star      string `cmd:"*" def:"active"`
+		Question  string `cmd:"a?b" def:"active"`
+	}
+	for _, tt := range []struct {
+		name string
+		want config
+	}{
+		{name: "a/b", want: config{Slash: "active"}},
+		{name: `a\b`, want: config{Backslash: "active"}},
+		{name: "*", want: config{Star: "active"}},
+		{name: "a?b", want: config{Question: "active"}},
+		{name: "sender", want: config{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config{}
+			app := scopeApp(&cfg, &bytes.Buffer{})
+			for _, name := range []string{"a/b", `a\b`, "*", "a?b"} {
+				app.Cmd(name, "Literal name", func(*Ctx[config]) error { return nil })
+			}
+			if err := app.RunE(tt.name); err != nil {
+				t.Fatal(err)
+			}
+			if cfg != tt.want {
+				t.Fatalf("got %+v, want %+v", cfg, tt.want)
+			}
+		})
+	}
+}
+
+func TestCommandScopesTopLevelNameCollision(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "top-level serve", args: []string{"serve", "something"}, want: "active"},
+		{name: "nested serve", args: []string{"run", "serve"}, want: "untouched"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := struct {
+				Value string `cmd:"serve" def:"active"`
+			}{Value: "untouched"}
+			app := scopeApp(&cfg, &bytes.Buffer{})
+			app.Cmd("run", "Run").Cmd("serve", "Nested serve", app.commands["sender"].handler)
+			if err := app.RunE(tt.args...); err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Value != tt.want {
+				t.Fatalf("got %q, want %q", cfg.Value, tt.want)
+			}
+		})
+	}
+}
+
+func TestCommandScopesRejectChildName(t *testing.T) {
+	cfg := struct {
+		Value string `cmd:"something"`
+	}{}
+	app := scopeApp(&cfg, &bytes.Buffer{})
+	if err := app.RunE("serve", "something"); err == nil || !strings.Contains(err.Error(), "Value cmd") {
+		t.Fatalf("expected child-only scope declaration error, got %v", err)
+	}
+}
+
 func TestCommandScopesInvalidChildBeforeParsing(t *testing.T) {
 	for _, args := range [][]string{{"migrate"}, {"serve", "something"}, {"-help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {

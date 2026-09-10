@@ -323,6 +323,7 @@ func (a *App[T]) RunE(args ...string) error {
 	}
 
 	a.commandLine.commandGroup, _, _ = strings.Cut(cmd.path, " ")
+	a.commandLine.commandGroups = make([]string, 0, len(a.commands))
 	for name := range a.commands {
 		a.commandLine.commandGroups = append(a.commandLine.commandGroups, name)
 	}
