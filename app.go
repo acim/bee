@@ -322,6 +322,10 @@ func (a *App[T]) RunE(args ...string) error {
 		return errors.New("no command supplied")
 	}
 
+	a.commandLine.commandGroup, _, _ = strings.Cut(cmd.path, " ")
+	for name := range a.commands {
+		a.commandLine.commandGroups = append(a.commandLine.commandGroups, name)
+	}
 	a.setUsage(cmd)
 	if err := a.commandLine.parse(a.Cfg, flags); err != nil {
 		return err
