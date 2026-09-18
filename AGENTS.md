@@ -20,6 +20,6 @@
 ## CI and Security Notes
 
 - Keep the early blocking `actionlint` job in `pipeline.yml`, using `raven-actions/actionlint@v2`, and make Go checks depend on it. Also validate workflow changes locally with `actionlint`.
-- `ectobit/reusable-workflows/.github/workflows/go-check.yaml` already runs `golangci-lint run` and `govulncheck ./...`.
+- Before pushing Go changes, run `make check` (mirrors the static gates of `ectobit/reusable-workflows/.github/workflows/go-check.yaml`: lint, `govulncheck ./...`, `go fix -diff ./...`) plus the tests affected by the change.
 - GitHub CodeQL/code scanning is enabled in the repository settings.
 - This repository is a Go library and does not build or publish container images. Container image vulnerability scanning is not applicable unless a Dockerfile or image publishing workflow is added.
