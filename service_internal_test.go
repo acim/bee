@@ -145,7 +145,7 @@ func TestServiceRunClosesRegisteredClosersInReverseOrder(t *testing.T) {
 		&cfg,
 		WithOutput(io.Discard),
 		WithErrorHandling(flag.ContinueOnError),
-		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithLogger(slog.New(slog.DiscardHandler)),
 	)
 	app.timeout = 100 * time.Millisecond
 

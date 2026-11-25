@@ -30,7 +30,7 @@ func newTestApp(t *testing.T, cfg appTestConfig, output *bytes.Buffer, opts ...O
 	allOpts := []Option{
 		WithOutput(output),
 		WithErrorHandling(flag.ContinueOnError),
-		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithLogger(slog.New(slog.DiscardHandler)),
 	}
 	allOpts = append(allOpts, opts...)
 
@@ -41,7 +41,7 @@ func TestAppRootReceivesRuntimeContextWithFields(t *testing.T) {
 	t.Parallel()
 
 	output := &bytes.Buffer{}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	app := newTestApp(t, appTestConfig{}, output, WithLogger(logger))
 
 	var gotConfig appTestConfig
@@ -109,7 +109,7 @@ func TestNewExposesRuntimeFields(t *testing.T) {
 	t.Parallel()
 
 	cfg := appTestConfig{}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	app := New("maia", &cfg, WithLogger(logger))
 
 	if app.Cfg != &cfg {

@@ -114,7 +114,7 @@ func Example_commandTree() {
 		&cfg,
 		bee.WithErrorHandling(flag.ContinueOnError),
 		bee.WithOutput(io.Discard),
-		bee.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		bee.WithLogger(slog.New(slog.DiscardHandler)),
 	)
 
 	start := app.Cmd("start", "Start services")
